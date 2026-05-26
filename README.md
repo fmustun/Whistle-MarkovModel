@@ -1,4 +1,4 @@
-# MarkovModel
+# Whistle-MarkovModel
 
 Markov transition network analysis for dolphin whistle sub-categories: null-model significance, network visualization, node-level metrics, and global network statistics.
 
@@ -38,7 +38,7 @@ Rscript scripts/03_global_network_measures.R
 Or in R:
 
 ```r
-setwd("/path/to/MarkovModel")
+setwd("/path/to/Whistle-MarkovModel")
 source("scripts/01_run_markov_model.R")
 source("scripts/02_node_network_measures.R")
 source("scripts/03_global_network_measures.R")
@@ -48,9 +48,11 @@ source("scripts/03_global_network_measures.R")
 
 | Script | Purpose | Output |
 |--------|---------|--------|
-| `01_run_markov_model.R` | Build Markov model (null model + p-values), plot significant-transition network | `outputs/markov_model.rds` |
-| `02_node_network_measures.R` | Node metrics, turn-taking probabilities, bar/scatter plots | `outputs/node_measures.csv` |
-| `03_global_network_measures.R` | Degree-preserving random networks, clustering p-value, small-world, communities | `outputs/global_null_metrics.rds` |
+| `01_run_markov_model.R` | Build Markov model (null model + p-values), plot significant-transition network | `outputs/markov_model.rds`, `outputs/plots/markov_significant_network.pdf` |
+| `02_node_network_measures.R` | Node metrics, turn-taking probabilities, bar/scatter plots | `outputs/node_measures.csv`, `outputs/plots/*.pdf` |
+| `03_global_network_measures.R` | Degree-preserving random networks, clustering p-value, small-world, communities | `outputs/global_null_metrics.rds`, `outputs/plots/*.pdf` |
+
+Figures are written as PDFs under `outputs/plots/` (created automatically). Data files remain in `outputs/`.
 
 Script 02 and 03 require `outputs/markov_model.rds` from script 01.
 
@@ -66,7 +68,3 @@ Defaults are in `R/config.R`:
 ## Runtime
 
 Script 01 is CPU-intensive (parallel null model). With 1000 iterations on the full dataset (~8500 whistles), expect several minutes depending on core count.
-
-## Original analysis
-
-Refactored from `Markov_Model/Batch_2/MM_batch_2_null_model_not_forced.R`.

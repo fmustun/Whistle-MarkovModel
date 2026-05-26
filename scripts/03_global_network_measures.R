@@ -21,6 +21,9 @@ setwd(REPO_ROOT)
 
 source(file.path(REPO_ROOT, "R", "config.R"))
 source(file.path(REPO_ROOT, "R", "graph_utils.R"))
+source(file.path(REPO_ROOT, "R", "plot_io.R"))
+
+ensure_plots_dir(REPO_ROOT)
 
 rds_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")
 if (!file.exists(rds_path)) {
@@ -66,7 +69,7 @@ mean_CCrd <- mean(rdm_clustering_coefficients)
 sd_CCrd <- sd(rdm_clustering_coefficients)
 Z_score_CC <- (obs_clustering_coefficients - mean_CCrd) / sd_CCrd
 
-print(
+save_ggplot(
   ggplot(data = data.frame(rdm_clustering_coefficients), aes(x = rdm_clustering_coefficients)) +
     geom_histogram(aes(y = after_stat(density)), bins = 100, fill = "gray", position = "identity", linewidth = 0.8) +
     geom_vline(aes(xintercept = obs_clustering_coefficients, color = "Observed"), linewidth = 0.6) +
@@ -75,7 +78,11 @@ print(
       caption = sprintf("P-value = %.2f. Z-score = %.3f.", p2clust, Z_score_CC),
       x = "clustering coefficient",
       color = "Legend"
-    )
+    ),
+  "random_network_clustering_distribution",
+  REPO_ROOT,
+  width = 9,
+  height = 6
 )
 
 SWC <- (transitivity(gra1, type = "global") / mean(rdm_clustering_coefficients)) /
@@ -85,54 +92,68 @@ message(sprintf("Small-world coefficient: %.4f", SWC))
 set.seed(PLOT_SEED)
 cl <- cluster_louvain(as.undirected(gra1), resolution = 0.7)
 
-set.seed(PLOT_SEED)
-plot(
-  cl, gra1,
-  col = V(gra1)$color,
-  edge.curved = 0.2,
-  edge.arrow.size = 0.28,
-  vertex.size = 6,
-  arrow.width = 0.5,
-  edge.arrow.width = 1,
-  vertex.shape = "fcircle",
-  edge.color = rgb(10 / 255, 10 / 255, 10 / 255, 0.05),
-  vertex.frame.color = V(gra1)$vertex.frame.col,
-  vertex.frame.width = 2.5,
-  asp = 1,
-  main = "Community detection"
-)
-a <- legend(-2, 1, legend = unique(V(gra1)$category))
-x <- (a$text$x + a$rect$left) / 2
-y <- a$text$y
-symbols(
-  x, y,
-  circles = rep(1 / 30, length(unique(V(gra1)$category))),
-  inches = FALSE, add = TRUE,
-  bg = unique(V(gra1)$color), col = "gray"
+with_pdf_plot(
+  plot_path("community_detection", REPO_ROOT),
+  width = 9,
+  height = 9,
+  {
+    set.seed(PLOT_SEED)
+    plot(
+      cl, gra1,
+      col = V(gra1)$color,
+      edge.curved = 0.2,
+      edge.arrow.size = 0.28,
+      vertex.size = 6,
+      arrow.width = 0.5,
+      edge.arrow.width = 1,
+      vertex.shape = "fcircle",
+      edge.color = rgb(10 / 255, 10 / 255, 10 / 255, 0.05),
+      vertex.frame.color = V(gra1)$vertex.frame.col,
+      vertex.frame.width = 2.5,
+      asp = 1,
+      main = "Community detection"
+    )
+    a <- legend(-2, 1, legend = unique(V(gra1)$category))
+    x <- (a$text$x + a$rect$left) / 2
+    y <- a$text$y
+    symbols(
+      x, y,
+      circles = rep(1 / 30, length(unique(V(gra1)$category))),
+      inches = FALSE, add = TRUE,
+      bg = unique(V(gra1)$color), col = "gray"
+    )
+  }
 )
 message(sprintf("Modularity: %.4f", modularity(cl)))
 
-par(mfrow = c(2, 3))
-for (com in seq_along(cl)) {
-  set.seed(PLOT_SEED)
-  subgra1 <- subgraph(gra1, cl$membership == com)
-  plot(
-    subgra1,
-    layout = layout_with_fr(subgra1, niter = 500),
-    edge.curved = 0.2,
-    vertex.size = 8,
-    edge.color = rgb(180 / 255, 180 / 255, 180 / 255, rescale(E(subgra1)$weight, c(0.2, 1))),
-    edge.width = rescale(log(E(subgra1)$weight), c(1, 5)),
-    edge.arrow.size = 0.3,
-    edge.arrow.width = 0.45,
-    vertex.shape = "fcircle",
-    vertex.frame.color = V(subgra1)$vertex.frame.col,
-    vertex.frame.width = 2.5,
-    asp = 1,
-    main = paste("Community", com)
-  )
-}
-par(mfrow = c(1, 1))
+with_pdf_plot(
+  plot_path("community_subgraphs", REPO_ROOT),
+  width = 14,
+  height = 9,
+  {
+    par(mfrow = c(2, 3))
+    for (com in seq_along(cl)) {
+      set.seed(PLOT_SEED)
+      subgra1 <- subgraph(gra1, cl$membership == com)
+      plot(
+        subgra1,
+        layout = layout_with_fr(subgra1, niter = 500),
+        edge.curved = 0.2,
+        vertex.size = 8,
+        edge.color = rgb(180 / 255, 180 / 255, 180 / 255, rescale(E(subgra1)$weight, c(0.2, 1))),
+        edge.width = rescale(log(E(subgra1)$weight), c(1, 5)),
+        edge.arrow.size = 0.3,
+        edge.arrow.width = 0.45,
+        vertex.shape = "fcircle",
+        vertex.frame.color = V(subgra1)$vertex.frame.col,
+        vertex.frame.width = 2.5,
+        asp = 1,
+        main = paste("Community", com)
+      )
+    }
+    par(mfrow = c(1, 1))
+  }
+)
 
 out_path <- file.path(REPO_ROOT, OUTPUT_DIR, "global_null_metrics.rds")
 saveRDS(

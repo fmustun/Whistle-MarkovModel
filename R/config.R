@@ -2,6 +2,7 @@
 
 DATA_PATH <- "data/AllWhistlesSubClustering_final.csv"
 OUTPUT_DIR <- "outputs"
+PLOTS_DIR <- "outputs/plots"
 
 LIST_NAMES <- c(
   "SW_Neo", "SW_Luna", "SW_Yosefa", "SW_Nikita", "SW_Nana",

@@ -19,20 +19,3 @@ data/AllWhistlesSubClustering_final.csv
 | `whistle_name` | Whistle name |
 
 Rows with `Unknown` in `whistle_type_chr` are excluded by the analysis scripts.
-
-## Obtaining the file
-
-On the analysis machine, the full dataset is at:
-
-```
-/media/zfnews31/DolphinAnalysis/Sub_Clustering_Batch_2_final/AllWhistlesSubClustering_final.csv
-```
-
-Copy or symlink it into this folder, for example:
-
-```bash
-ln -s /media/zfnews31/DolphinAnalysis/Sub_Clustering_Batch_2_final/AllWhistlesSubClustering_final.csv \
-  data/AllWhistlesSubClustering_final.csv
-```
-
-The CSV is not tracked in git (large, project-specific path).

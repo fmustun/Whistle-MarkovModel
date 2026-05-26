@@ -23,6 +23,9 @@ setwd(REPO_ROOT)
 
 source(file.path(REPO_ROOT, "R", "config.R"))
 source(file.path(REPO_ROOT, "R", "graph_utils.R"))
+source(file.path(REPO_ROOT, "R", "plot_io.R"))
+
+ensure_plots_dir(REPO_ROOT)
 
 rds_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")
 if (!file.exists(rds_path)) {
@@ -63,14 +66,16 @@ df <- data.frame(
 df$nodes <- as.factor(df$nodes)
 
 df_order <- order_nodes_by_category(df, list_names, "occurrences")
-print(
+save_ggplot(
   ggplot(df_order) +
     aes(x = nodes, y = occurrences, fill = category) +
     geom_col(width = 0.75, color = "black") +
     scale_fill_manual(breaks = unique(df$category), values = unique(df$color)) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45)) +
-    labs(title = "Whistle occurrences by node")
+    labs(title = "Whistle occurrences by node"),
+  "whistle_occurrences",
+  REPO_ROOT
 )
 
 seq_category <- build_seq_category(whistles_list, list_names)
@@ -148,7 +153,7 @@ df2_order <- order_nodes_by_category(
   list_names,
   "prob_same_cat_outbound"
 )
-print(
+save_ggplot(
   ggplot(df2_order) +
     aes(x = nodes, y = prob_same_cat_outbound, fill = category) +
     geom_col(color = "black", width = 0.75) +
@@ -159,7 +164,9 @@ print(
       title = "Probability of next node in same category",
       y = "probability"
     ) +
-    geom_hline(yintercept = 0.5, linetype = "dashed", color = "red", linewidth = 0.5)
+    geom_hline(yintercept = 0.5, linetype = "dashed", color = "red", linewidth = 0.5),
+  "prob_same_category_outbound",
+  REPO_ROOT
 )
 
 df_order <- order_nodes_by_category(df3, list_names, "prob_diff_cat_outbound")
@@ -224,9 +231,14 @@ g4 <- ggplot(df_order) +
     axis.line = element_line(colour = "black")
   )
 
-grid.arrange(g1, g3, g4, ncol = 1)
+save_ggplot(
+  gridExtra::arrangeGrob(g1, g3, g4, ncol = 1),
+  "turn_taking_and_centrality",
+  REPO_ROOT,
+  height = 14
+)
 
-print(
+save_ggplot(
   ggplot(df3, aes(x = betweenness, y = strength_in)) +
     geom_point(aes(fill = category), colour = "black", pch = 21, size = 5) +
     scale_fill_manual(breaks = unique(df3$category), values = unique(df3$color)) +
@@ -237,10 +249,12 @@ print(
       axis.line = element_line(colour = "black")
     ) +
     labs(y = "strength in") +
-    geom_text_repel(aes(label = nodes))
+    geom_text_repel(aes(label = nodes)),
+  "betweenness_vs_strength_in",
+  REPO_ROOT
 )
 
-print(
+save_ggplot(
   ggplot(df3, aes(x = prob_diff_cat_outbound, y = betweenness)) +
     geom_point(aes(fill = category), colour = "black", pch = 21, size = 5) +
     scale_fill_manual(breaks = unique(df3$category), values = unique(df3$color)) +
@@ -250,10 +264,12 @@ print(
       panel.background = element_blank(),
       axis.line = element_line(colour = "black")
     ) +
-    geom_text_repel(aes(label = nodes))
+    geom_text_repel(aes(label = nodes)),
+  "prob_diff_outbound_vs_betweenness",
+  REPO_ROOT
 )
 
-print(
+save_ggplot(
   ggplot(df3, aes(x = prob_diff_cat_inbound, y = prob_diff_cat_outbound)) +
     geom_point(aes(fill = category), colour = "black", pch = 21, size = 5) +
     scale_fill_manual(breaks = unique(df3$category), values = unique(df3$color)) +
@@ -270,7 +286,9 @@ print(
       panel.background = element_blank(),
       axis.line = element_line(colour = "black")
     ) +
-    geom_text_repel(aes(label = nodes))
+    geom_text_repel(aes(label = nodes)),
+  "prob_diff_inbound_vs_outbound",
+  REPO_ROOT
 )
 
 bet_str <- df3 %>%
@@ -281,12 +299,14 @@ bet_str <- df3 %>%
     .groups = "drop"
   )
 
-print(
+save_ggplot(
   ggplot(bet_str, aes(x = betweenness, y = strength_in)) +
     geom_point() +
     theme_minimal() +
     theme(axis.line = element_line(colour = "black")) +
-    geom_text_repel(aes(label = category))
+    geom_text_repel(aes(label = category)),
+  "category_mean_betweenness_vs_strength_in",
+  REPO_ROOT
 )
 
 csv_path <- file.path(REPO_ROOT, OUTPUT_DIR, "node_measures.csv")

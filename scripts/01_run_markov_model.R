@@ -24,8 +24,10 @@ source(file.path(REPO_ROOT, "R", "config.R"))
 source(file.path(REPO_ROOT, "R", "load_whistles.R"))
 source(file.path(REPO_ROOT, "R", "markov_whistle.R"))
 source(file.path(REPO_ROOT, "R", "graph_utils.R"))
+source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
 dir.create(file.path(REPO_ROOT, OUTPUT_DIR), showWarnings = FALSE, recursive = TRUE)
+ensure_plots_dir(REPO_ROOT)
 
 message("Loading whistles from ", DATA_PATH)
 whistles_list <- load_whistles(DATA_PATH)
@@ -55,7 +57,12 @@ gra1 <- compute_graph_p_value_significant(
 )
 
 message("Plotting significant-transition network (p < ", GRAPH_P_VALUE, ")")
-plot_markov_graph(gra1, list_names = LIST_NAMES, seed = PLOT_SEED)
+with_pdf_plot(
+  plot_path("markov_significant_network", REPO_ROOT),
+  width = 8,
+  height = 8,
+  plot_markov_graph(gra1, list_names = LIST_NAMES, seed = PLOT_SEED)
+)
 
 out_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")
 saveRDS(
