@@ -17,6 +17,10 @@ LIST_COLORS <- c(
 TIME_WINDOW <- c(0, 5.94)
 NULL_MODEL <- "shuffle"
 GRAPH_P_VALUE <- 0.05
+# Edge selection for a newly generated model. "none" reproduces the original
+# raw empirical-p network; "BH" adjusts the complete ordered state-pair family.
+MULTIPLE_TESTING_CORRECTION <- "BH"
+GRAPH_ALPHA <- 0.05
 ITERATIONS <- 1000L
 SEED <- 0L
 MIN_SHIFT <- 0

@@ -172,20 +172,30 @@ MarkovWhistle <- function(
   )
 
   a_mat <- matrix(0, ncol = whistle_number, nrow = whistle_number)
-  b_mat <- matrix(0, ncol = whistle_number, nrow = whistle_number)
+  exceedance_mat <- matrix(0, ncol = whistle_number, nrow = whistle_number)
 
   for (i in 1:iterations) {
     a_mat <- a_mat + (
       transition_probabilities_matrix_all >
         random_whistle_transition_probabilities_matrices[[i]]
     )
-    b_mat <- b_mat + (
-      transition_probabilities_matrix_all <
-        random_whistle_transition_probabilities_matrices[[i]]
+    exceedance_mat <- exceedance_mat + (
+      random_whistle_transition_probabilities_matrices[[i]] >=
+        transition_probabilities_matrix_all
     )
   }
 
-  p_values <- b_mat / iterations
+  # Valid one-sided empirical enrichment p-values. Ties count as null
+  # exceedances, the +1 correction prevents zero p-values, and transitions
+  # absent from the observed network are assigned p = 1 while remaining in the
+  # complete ordered-pair family used by the multiple-testing correction.
+  p_values <- (1 + exceedance_mat) / (iterations + 1)
+  p_values[transition_probabilities_matrix_all == 0] <- 1
+  bh_q_values <- matrix(
+    stats::p.adjust(as.vector(p_values), method = "BH"),
+    nrow = whistle_number,
+    ncol = whistle_number
+  )
   inv_p_values <- (1 - p_values) * (transition_probabilities_matrix_all > 0)
 
   random_whistle_probability_mean_matrix <- apply(
@@ -207,6 +217,8 @@ MarkovWhistle <- function(
     transition_probabilities_matrix_all = transition_probabilities_matrix_all,
     transition_counts_matrix = transition_counts_matrix,
     p_value_matrix = p_values,
+    bh_q_value_matrix = bh_q_values,
+    empirical_exceedance_count_matrix = exceedance_mat,
     inv_p_value_matrix = inv_p_values,
     random_whistle_occurrences_matrices = random_whistle_occurrences_matrices,
     random_whistle_probability_mean_matrix = random_whistle_probability_mean_matrix,

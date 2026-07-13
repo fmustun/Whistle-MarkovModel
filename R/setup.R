@@ -18,6 +18,7 @@ source_repo <- function() {
   source(file.path(repo_root, "R", "config.R"), local = FALSE)
   source(file.path(repo_root, "R", "load_whistles.R"), local = FALSE)
   source(file.path(repo_root, "R", "markov_whistle.R"), local = FALSE)
+  source(file.path(repo_root, "R", "statistical_utils.R"), local = FALSE)
   source(file.path(repo_root, "R", "graph_utils.R"), local = FALSE)
   source(file.path(repo_root, "R", "plot_io.R"), local = FALSE)
   invisible(repo_root)

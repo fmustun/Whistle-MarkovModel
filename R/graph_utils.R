@@ -164,6 +164,53 @@ compute_graph_p_value_significant <- function(
   Gra
 }
 
+compute_graph_from_selection <- function(
+    transition_matrix,
+    selection_values,
+    Markov_Model,
+    Whistles_List,
+    list_names = LIST_NAMES,
+    list_colors = LIST_COLORS,
+    edge_attribute_name = "adjusted_p",
+    raw_p_values = NULL
+) {
+  graph_with_loops <- compute_graph(
+    transition_matrix,
+    Markov_Model = Markov_Model,
+    Whistles_List = Whistles_List,
+    sub_division = TRUE,
+    list_names = list_names,
+    list_colors = list_colors
+  )
+  if (ecount(graph_with_loops) > 0L) {
+    endpoints <- ends(graph_with_loops, E(graph_with_loops), names = TRUE)
+    index <- cbind(as.integer(endpoints[, 1L]), as.integer(endpoints[, 2L]))
+    graph_with_loops <- set_edge_attr(
+      graph_with_loops, edge_attribute_name, value = selection_values[index]
+    )
+    if (!is.null(raw_p_values)) {
+      graph_with_loops <- set_edge_attr(
+        graph_with_loops, "empirical_p", value = raw_p_values[index]
+      )
+    }
+  }
+  loop_ids <- which(diag(transition_matrix) > 0)
+  frame_color <- ifelse(
+    as.integer(V(graph_with_loops)$name) %in% loop_ids, "black", "gray"
+  )
+  graph_with_loops <- set_vertex_attr(
+    graph_with_loops, "vertex.frame.col", value = frame_color
+  )
+  graph_no_loops <- delete_edges(
+    graph_with_loops, which(which_loop(graph_with_loops))
+  )
+  list(
+    with_loops = graph_with_loops,
+    no_loops = graph_no_loops,
+    significant_loop_ids = loop_ids
+  )
+}
+
 mycircle <- function(coords, v = NULL, params) {
   vertex.color <- params("vertex", "color")
   if (length(vertex.color) != 1 && !is.null(v)) {
@@ -203,18 +250,74 @@ register_fcircle_shape <- function() {
   )
 }
 
-plot_markov_graph <- function(gra, list_names = LIST_NAMES, seed = PLOT_SEED) {
+compute_markov_layout <- function(gra, seed = PLOT_SEED) {
   set.seed(seed)
+  coordinates <- layout_with_fr(gra, niter = 500, grid = "nogrid")
+  coordinates <- norm_coords(
+    coordinates, xmin = -0.85, xmax = 0.85, ymin = -0.85, ymax = 0.85
+  )
+  rownames(coordinates) <- V(gra)$name
+  colnames(coordinates) <- c("x", "y")
+  coordinates
+}
+
+layout_for_graph <- function(coordinates, gra) {
+  if (is.null(rownames(coordinates))) {
+    stop("Layout coordinates must have vertex IDs as row names", call. = FALSE)
+  }
+  missing <- setdiff(V(gra)$name, rownames(coordinates))
+  if (length(missing)) {
+    stop("Layout lacks graph vertices: ", paste(missing, collapse = ", "),
+         call. = FALSE)
+  }
+  coordinates[V(gra)$name, , drop = FALSE]
+}
+
+rescale_from_reference <- function(values, reference_range, output_range) {
+  if (length(reference_range) != 2L || !all(is.finite(reference_range)) ||
+      diff(reference_range) <= 0) {
+    stop("reference_range must contain two finite increasing values",
+         call. = FALSE)
+  }
+  output_range[1L] +
+    (values - reference_range[1L]) / diff(reference_range) * diff(output_range)
+}
+
+plot_markov_graph <- function(
+    gra,
+    list_names = LIST_NAMES,
+    list_colors = LIST_COLORS,
+    seed = PLOT_SEED,
+    coordinates = NULL,
+    weight_reference_range = NULL,
+    show_legend = TRUE,
+    main = NULL
+) {
+  if (is.null(coordinates)) coordinates <- compute_markov_layout(gra, seed)
+  coordinates <- layout_for_graph(coordinates, gra)
+  if (is.null(weight_reference_range)) {
+    weight_reference_range <- range(E(gra)$weight)
+  }
+  edge_alpha <- rescale_from_reference(
+    E(gra)$weight, weight_reference_range, c(0.01, 1)
+  )
+  edge_width <- rescale_from_reference(
+    E(gra)$weight, weight_reference_range, c(3, 7)
+  )
+  edge_alpha <- pmin(1, pmax(0.01, edge_alpha))
+  edge_width <- pmax(0, edge_width)
+
   plot.igraph(
     gra,
-    layout = layout_with_fr(gra, niter = 500, grid = "nogrid"),
+    layout = coordinates,
+    rescale = FALSE,
     edge.curved = 0.2,
     vertex.size = 5,
     edge.color = rgb(
       140 / 255, 140 / 255, 140 / 255,
-      rescale(E(gra)$weight, c(0.01, 1))
+      edge_alpha
     ),
-    edge.width = rescale(E(gra)$weight, c(3, 7)),
+    edge.width = edge_width,
     edge.arrow.size = 0.5,
     edge.arrow.width = 0.75,
     vertex.shape = "fcircle",
@@ -222,18 +325,18 @@ plot_markov_graph <- function(gra, list_names = LIST_NAMES, seed = PLOT_SEED) {
     vertex.frame.width = 2.5,
     ylim = c(-0.85, 0.85),
     xlim = c(-0.85, 0.85),
-    asp = 1
+    asp = 1,
+    main = main
   )
-  a <- legend(-2, 1, legend = list_names)
-  x <- (a$text$x + a$rect$left) / 2
-  y <- a$text$y
-  symbols(
-    x, y,
-    circles = rep(1 / 30, length(list_names)),
-    inches = FALSE, add = TRUE,
-    bg = unique(V(gra)$color), col = "gray"
-  )
-  invisible(gra)
+  if (show_legend) {
+    legend(
+      "bottom", inset = c(0, -0.08), xpd = NA, ncol = 5,
+      legend = list_names, pch = 21, pt.bg = list_colors,
+      col = "gray", pt.cex = 1.05, cex = 0.62, bty = "n",
+      x.intersp = 0.45, y.intersp = 0.8
+    )
+  }
+  invisible(coordinates)
 }
 
 order_nodes_by_category <- function(df, list_names, order_col) {

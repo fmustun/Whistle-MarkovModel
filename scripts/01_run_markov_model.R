@@ -23,6 +23,7 @@ setwd(REPO_ROOT)
 source(file.path(REPO_ROOT, "R", "config.R"))
 source(file.path(REPO_ROOT, "R", "load_whistles.R"))
 source(file.path(REPO_ROOT, "R", "markov_whistle.R"))
+source(file.path(REPO_ROOT, "R", "statistical_utils.R"))
 source(file.path(REPO_ROOT, "R", "graph_utils.R"))
 source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
@@ -47,16 +48,35 @@ MarkovModel <- MarkovWhistle(
 )
 
 register_fcircle_shape()
-gra1 <- compute_graph_p_value_significant(
-  GRAPH_P_VALUE,
+adjusted_p_value <- adjust_transition_p_values(
+  MarkovModel$p_value_matrix,
+  correction = MULTIPLE_TESTING_CORRECTION
+)
+selection <- select_transition_matrix(
+  MarkovModel$transition_probabilities_matrix_all,
+  adjusted_p_value,
+  alpha = GRAPH_ALPHA
+)
+selected_graphs <- compute_graph_from_selection(
+  transition_matrix = selection$matrix,
+  selection_values = adjusted_p_value,
   Markov_Model = MarkovModel,
   Whistles_List = whistles_list,
-  sub_network = NULL,
-  sub_division = TRUE,
-  list_names = LIST_NAMES
+  list_names = LIST_NAMES,
+  list_colors = LIST_COLORS,
+  edge_attribute_name = if (MULTIPLE_TESTING_CORRECTION == "BH") {
+    "bh_q"
+  } else {
+    "empirical_p"
+  },
+  raw_p_values = MarkovModel$p_value_matrix
 )
+gra1 <- selected_graphs$no_loops
 
-message("Plotting significant-transition network (p < ", GRAPH_P_VALUE, ")")
+message(
+  "Plotting significant-transition network (",
+  MULTIPLE_TESTING_CORRECTION, " adjusted p < ", GRAPH_ALPHA, ")"
+)
 with_pdf_plot(
   plot_path("markov_significant_network", REPO_ROOT),
   width = 8,
@@ -77,6 +97,8 @@ saveRDS(
       null_model = NULL_MODEL,
       time_window = TIME_WINDOW,
       graph_p_value = GRAPH_P_VALUE,
+      multiple_testing_correction = MULTIPLE_TESTING_CORRECTION,
+      graph_alpha = GRAPH_ALPHA,
       list_names = LIST_NAMES
     )
   ),
