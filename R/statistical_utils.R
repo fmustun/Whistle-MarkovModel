@@ -108,9 +108,34 @@ empirical_enrichment_p_values <- function(
   list(p_value = empirical_p, exceedance_count = exceedances)
 }
 
-adjust_transition_p_values <- function(empirical_p, correction = c("BH", "none")) {
+# family_mask restricts the multiple-testing family to the transitions
+# actually eligible for selection (observed_probability > 0). Never-observed
+# transitions can never pass select_transition_matrix's own positivity
+# requirement, so including them in the correction inflates the family size
+# for no statistical benefit (independent filtering; Bourgon et al. 2010).
+# Entries outside family_mask are set to 1 (never significant), matching the
+# zero_observed_rule already used for raw empirical p-values. family_mask
+# defaults to NULL, which corrects across every entry (prior behavior).
+adjust_transition_p_values <- function(empirical_p, correction = c("BH", "none"),
+                                       family_mask = NULL) {
   correction <- match.arg(correction)
   empirical_p <- name_transition_matrix(empirical_p)
+  if (!is.null(family_mask)) {
+    if (!identical(dim(family_mask), dim(empirical_p))) {
+      stop("family_mask must have the same dimensions as empirical_p",
+           call. = FALSE)
+    }
+    adjusted <- matrix(
+      1, nrow = nrow(empirical_p), ncol = ncol(empirical_p),
+      dimnames = dimnames(empirical_p)
+    )
+    adjusted[family_mask] <- if (correction == "none") {
+      empirical_p[family_mask]
+    } else {
+      stats::p.adjust(empirical_p[family_mask], method = correction)
+    }
+    return(name_transition_matrix(adjusted))
+  }
   adjusted <- if (correction == "none") {
     empirical_p
   } else {
@@ -121,6 +146,28 @@ adjust_transition_p_values <- function(empirical_p, correction = c("BH", "none")
     )
   }
   name_transition_matrix(adjusted)
+}
+
+# Minimum permutation count for a multiple-testing family of size m at
+# significance level alpha to have any resolving power: the empirical
+# p-value floor is 1/(B+1), so the strictest BH threshold (rank 1, alpha/m)
+# requires B >= m/alpha - 1. margin scales past that bare floor so p-value
+# estimates near the decision boundary aren't dominated by Monte Carlo noise
+# (a hypothesis right at the floor has an expected exceedance count of only
+# ~1 at the bare minimum; margin = 5 raises that to ~5, and so on).
+recommended_iterations <- function(m, alpha, margin = 5) {
+  if (length(m) != 1L || !is.finite(m) || m <= 0) {
+    stop("m must be one positive finite number", call. = FALSE)
+  }
+  if (length(alpha) != 1L || !is.finite(alpha) || alpha <= 0 || alpha >= 1) {
+    stop("alpha must be one finite number strictly between zero and one",
+         call. = FALSE)
+  }
+  if (length(margin) != 1L || !is.finite(margin) || margin <= 0) {
+    stop("margin must be one positive finite number", call. = FALSE)
+  }
+  floor_iterations <- ceiling(m / alpha) - 1
+  as.integer(ceiling(margin * (floor_iterations + 1)))
 }
 
 select_transition_matrix <- function(observed_probability, adjusted_p,

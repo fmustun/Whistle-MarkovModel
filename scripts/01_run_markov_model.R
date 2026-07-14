@@ -48,9 +48,15 @@ MarkovModel <- MarkovWhistle(
 )
 
 register_fcircle_shape()
+# Never-observed transitions can never pass select_transition_matrix's own
+# observed_probability > 0 requirement, so they are excluded from the
+# multiple-testing family rather than diluting it (see
+# adjust_transition_p_values' family_mask in R/statistical_utils.R).
+family_mask <- MarkovModel$transition_probabilities_matrix_all > 0
 adjusted_p_value <- adjust_transition_p_values(
   MarkovModel$p_value_matrix,
-  correction = MULTIPLE_TESTING_CORRECTION
+  correction = MULTIPLE_TESTING_CORRECTION,
+  family_mask = family_mask
 )
 selection <- select_transition_matrix(
   MarkovModel$transition_probabilities_matrix_all,
@@ -72,6 +78,16 @@ selected_graphs <- compute_graph_from_selection(
   raw_p_values = MarkovModel$p_value_matrix
 )
 gra1 <- selected_graphs$no_loops
+
+counts <- transition_selection_counts(selection$mask)
+# No pinned regression check here: the previous pin (150,000 iterations;
+# retained_nodes=66 etc.) was tied to a hypothesis family that included
+# never-observed transitions and to an iteration count that was tuned to
+# reproduce a target result rather than derived from a resolution
+# requirement (see recommended_iterations() in R/statistical_utils.R). Once
+# you've run the derived iteration count once and trust the result, use
+# assert_transition_selection_counts(counts, c(...)) to pin a new baseline.
+message(paste(names(counts), counts, sep = "=", collapse = "; "))
 
 message(
   "Plotting significant-transition network (",
@@ -105,3 +121,98 @@ saveRDS(
   out_path
 )
 message("Saved ", out_path)
+
+bh_dir <- file.path(REPO_ROOT, OUTPUT_DIR, "bh_analysis")
+dir.create(bh_dir, recursive = TRUE, showWarnings = FALSE)
+
+label_map <- tapply(
+  whistles_list$whistle_type_chr,
+  whistles_list$whistle_type,
+  function(value) as.character(value[1L])
+)
+coordinates <- compute_markov_layout(gra1, PLOT_SEED)
+
+coordinate_table <- data.frame(
+  node_id = as.integer(rownames(coordinates)),
+  label = unname(label_map[rownames(coordinates)]),
+  category = V(gra1)$category,
+  x = coordinates[, "x"],
+  y = coordinates[, "y"],
+  stringsAsFactors = FALSE
+)
+
+retained_index <- which(selection$mask, arr.ind = TRUE)
+edge_table <- data.frame(
+  from_node_id = retained_index[, 1L],
+  to_node_id = retained_index[, 2L],
+  from_label = unname(label_map[as.character(retained_index[, 1L])]),
+  to_label = unname(label_map[as.character(retained_index[, 2L])]),
+  transition_probability = MarkovModel$transition_probabilities_matrix_all[retained_index],
+  empirical_p = MarkovModel$p_value_matrix[retained_index],
+  adjusted_p = adjusted_p_value[retained_index],
+  correction = MULTIPLE_TESTING_CORRECTION,
+  is_auto_loop = retained_index[, 1L] == retained_index[, 2L],
+  stringsAsFactors = FALSE
+)
+if (MULTIPLE_TESTING_CORRECTION == "BH") {
+  names(edge_table)[names(edge_table) == "adjusted_p"] <- "bh_q"
+}
+
+write.csv(MarkovModel$p_value_matrix,
+          file.path(bh_dir, "empirical_p_values.csv"))
+write.csv(adjusted_p_value, file.path(bh_dir,
+          if (MULTIPLE_TESTING_CORRECTION == "BH")
+            "bh_q_values.csv" else "uncorrected_p_values.csv"))
+saveRDS(MarkovModel$p_value_matrix,
+        file.path(bh_dir, "empirical_p_values.rds"))
+saveRDS(adjusted_p_value, file.path(bh_dir,
+        if (MULTIPLE_TESTING_CORRECTION == "BH")
+          "bh_q_values.rds" else "uncorrected_p_values.rds"))
+saveRDS(MarkovModel$empirical_exceedance_count_matrix,
+        file.path(bh_dir, "empirical_exceedance_counts.rds"))
+write.csv(coordinate_table, file.path(bh_dir, "node_layout_coordinates.csv"),
+          row.names = FALSE)
+write.csv(edge_table, file.path(bh_dir, "bh_retained_edges.csv"),
+          row.names = FALSE)
+write.csv(data.frame(metric = names(counts), value = as.integer(counts)),
+          file.path(bh_dir, "bh_validation_counts.csv"), row.names = FALSE)
+saveRDS(
+  list(
+    iterations = ITERATIONS,
+    hypothesis_count = sum(family_mask),
+    empirical_p_formula = "(1 + count(null >= observed)) / (B + 1)",
+    zero_observed_rule = "p = 1",
+    correction = MULTIPLE_TESTING_CORRECTION,
+    alpha = GRAPH_ALPHA,
+    empirical_p_values = MarkovModel$p_value_matrix,
+    adjusted_p_values = adjusted_p_value,
+    significant_transition_matrix = selection$matrix,
+    significant_mask = selection$mask,
+    selection_counts = counts,
+    graph_with_loops = selected_graphs$with_loops,
+    graph = gra1,
+    significant_auto_loop_ids = selected_graphs$significant_loop_ids,
+    layout_coordinates = coordinates
+  ),
+  file.path(bh_dir, "bh_corrected_network.rds")
+)
+
+writeLines(
+  c(
+    "BH-corrected significant network",
+    paste("iterations:", ITERATIONS),
+    paste(
+      "hypothesis family:", sum(family_mask),
+      "transitions observed at least once (loops included);",
+      "never-observed transitions are excluded (see family_mask in",
+      "adjust_transition_p_values, R/statistical_utils.R)"
+    ),
+    "empirical p: (1 + count(null >= observed)) / (B + 1); zero-observed p = 1",
+    paste("correction:", MULTIPLE_TESTING_CORRECTION),
+    paste("alpha:", GRAPH_ALPHA),
+    paste(names(counts), counts, sep = ": "),
+    "loops are represented by black node borders and omitted as drawn edges"
+  ),
+  file.path(bh_dir, "bh_analysis_summary.txt")
+)
+message("BH analysis outputs written to ", bh_dir)

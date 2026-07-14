@@ -48,4 +48,21 @@ stopifnot(
   counts[["loop_free_edges"]] == 1
 )
 
+family_mask <- matrix(c(TRUE, FALSE, FALSE, TRUE), nrow = 2)
+raw_p <- matrix(c(0.01, 1, 1, 0.02), nrow = 2)
+masked_bh <- adjust_transition_p_values(raw_p, "BH", family_mask = family_mask)
+stopifnot(
+  isTRUE(all.equal(
+    unname(masked_bh[family_mask]),
+    stats::p.adjust(raw_p[family_mask], method = "BH")
+  )),
+  all(masked_bh[!family_mask] == 1)
+)
+
+stopifnot(
+  recommended_iterations(m = 1214, alpha = 0.05, margin = 5) == 121400L,
+  recommended_iterations(m = 100, alpha = 0.05, margin = 1) ==
+    as.integer(ceiling(100 / 0.05))
+)
+
 message("All statistical utility tests passed")
