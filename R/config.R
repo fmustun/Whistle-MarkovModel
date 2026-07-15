@@ -43,3 +43,7 @@ MAX_SHIFT <- 1500
 THRESHOLD <- 2
 NULL_NETWORK_ITERATIONS <- 1000L
 PLOT_SEED <- 42L
+
+# Inter-whistle interval threshold (seconds) for grouping consecutive
+# whistles into a multi-loop chain (start_time[i+1] - end_time[i] < this).
+MULTILOOP_IWI_THRESHOLD <- 0.25
