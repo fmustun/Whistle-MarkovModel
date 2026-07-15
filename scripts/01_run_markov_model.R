@@ -97,7 +97,9 @@ with_pdf_plot(
   plot_path("markov_significant_network", REPO_ROOT),
   width = 8,
   height = 8,
-  plot_markov_graph(gra1, list_names = LIST_NAMES, seed = PLOT_SEED)
+  plot_markov_graph(
+    gra1, list_names = LIST_NAMES, seed = PLOT_SEED, show_legend = FALSE
+  )
 )
 
 out_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")

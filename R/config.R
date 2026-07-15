@@ -11,7 +11,7 @@ LIST_NAMES <- c(
 
 LIST_COLORS <- c(
   "#61D04F", "#2297E6", "#F5C710", "#ee0000", "#A6E1DF",
-  "#ae3450", "#ffc2f5", "#fefeb1", "#feaf92", "#e6e6fa"
+  "#ae3450", "#ffc2f5", "#a06f05", "#feaf92", "#e6e6fa"
 )
 
 TIME_WINDOW <- c(0, 5.94)
@@ -42,4 +42,4 @@ MIN_SHIFT <- 0
 MAX_SHIFT <- 1500
 THRESHOLD <- 2
 NULL_NETWORK_ITERATIONS <- 1000L
-PLOT_SEED <- 22L
+PLOT_SEED <- 42L

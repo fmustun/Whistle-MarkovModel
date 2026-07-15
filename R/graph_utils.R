@@ -216,7 +216,7 @@ mycircle <- function(coords, v = NULL, params) {
   if (length(vertex.color) != 1 && !is.null(v)) {
     vertex.color <- vertex.color[v]
   }
-  vertex.size <- 1 / 200 * params("vertex", "size")
+  vertex.size <- 1 / 140 * params("vertex", "size")
   if (length(vertex.size) != 1 && !is.null(v)) {
     vertex.size <- vertex.size[v]
   }
@@ -250,11 +250,34 @@ register_fcircle_shape <- function() {
   )
 }
 
-compute_markov_layout <- function(gra, seed = PLOT_SEED) {
+compute_markov_layout <- function(gra, seed = PLOT_SEED, half_width = 1.3) {
   set.seed(seed)
-  coordinates <- layout_with_fr(gra, niter = 500, grid = "nogrid")
+  # layout_with_fr uses the edge `weight` attribute (raw transition
+  # probability, ~0.008-1 here) as attraction strength by default, so
+  # near-1 edges pull their nodes almost on top of each other. Raising it
+  # to a small power flattens that range so strongly-linked nodes still
+  # end up closer together without collapsing into overlapping points.
+  # (A near-zero exponent, i.e. ~ignoring weight entirely, was tried too:
+  # combined with the wider box below it reads as a tangled hairball,
+  # since node position then mostly reflects raw topology rather than
+  # transition strength - 0.25 keeps the clusters visually coherent.)
+  layout_weights <- E(gra)$weight^0.25
+  coordinates <- layout_with_fr(
+    gra, niter = 2000, grid = "nogrid", weights = layout_weights
+  )
+  #coordinates <- layout_with_sugiyama(gra)
+  # igraph 2.x dropped layout_with_fr's area/repulserad knobs (they're
+  # silently no-ops now), so there's no direct repulsion dial anymore.
+  # vertex circles are drawn at a fixed absolute size (see mycircle()),
+  # so normalizing into a wider box - while plot_markov_graph derives
+  # xlim/ylim from this same range - grows every node's gap relative to
+  # that fixed circle size. That's the practical equivalent of turning up
+  # repulsion: raising half_width from the original 0.95 pushes every
+  # node further from its neighbors relative to its (fixed-size) circle.
   coordinates <- norm_coords(
-    coordinates, xmin = -0.85, xmax = 0.85, ymin = -0.85, ymax = 0.85
+    coordinates,
+    xmin = -half_width, xmax = half_width,
+    ymin = -half_width, ymax = half_width
   )
   rownames(coordinates) <- V(gra)$name
   colnames(coordinates) <- c("x", "y")
@@ -295,17 +318,29 @@ plot_markov_graph <- function(
 ) {
   if (is.null(coordinates)) coordinates <- compute_markov_layout(gra, seed)
   coordinates <- layout_for_graph(coordinates, gra)
+  # plot.igraph does not touch par("mar"), so the default axis/title
+  # margins (5.1/4.1/4.1/2.1 lines) otherwise eat a large, unused border
+  # around the network. Shrink to near-zero (a bit more at the bottom
+  # when the legend needs room) so the layout fills the figure.
+  old_par <- par(mar = if (show_legend) c(3, 0.5, 0.5, 0.5) else rep(0.5, 4))
+  on.exit(par(old_par), add = TRUE)
   if (is.null(weight_reference_range)) {
     weight_reference_range <- range(E(gra)$weight)
   }
   edge_alpha <- rescale_from_reference(
-    E(gra)$weight, weight_reference_range, c(0.01, 1)
+    E(gra)$weight, weight_reference_range, c(0.1, 1)
   )
   edge_width <- rescale_from_reference(
     E(gra)$weight, weight_reference_range, c(3, 7)
   )
   edge_alpha <- pmin(1, pmax(0.01, edge_alpha))
   edge_width <- pmax(0, edge_width)
+
+  # Derived from the coordinates actually passed in (rather than a
+  # hardcoded range) so this can never drift out of sync with whatever
+  # box compute_markov_layout() (or a caller-supplied layout) used - a
+  # mismatch here would clip nodes near the edge out of the plot.
+  plot_lim <- range(coordinates) * 1.05
 
   plot.igraph(
     gra,
@@ -318,13 +353,13 @@ plot_markov_graph <- function(
       edge_alpha
     ),
     edge.width = edge_width,
-    edge.arrow.size = 0.5,
-    edge.arrow.width = 0.75,
+    edge.arrow.size = 0.95,
+    edge.arrow.width = 0.95,
     vertex.shape = "fcircle",
     vertex.frame.color = V(gra)$vertex.frame.col,
     vertex.frame.width = 2.5,
-    ylim = c(-0.85, 0.85),
-    xlim = c(-0.85, 0.85),
+    ylim = plot_lim,
+    xlim = plot_lim,
     asp = 1,
     main = main
   )
