@@ -24,7 +24,7 @@ source(file.path(REPO_ROOT, "R", "graph_utils.R"))
 source(file.path(REPO_ROOT, "R", "multiloop_utils.R"))
 source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
-ensure_plots_dir(REPO_ROOT)
+ensure_plots_dir(REPO_ROOT, "multiloops")
 multiloop_dir <- file.path(REPO_ROOT, OUTPUT_DIR, "multiloop_analysis")
 dir.create(multiloop_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -104,6 +104,71 @@ message(
   "%) stay within a single main category"
 )
 
+# Do specific multi-loops recur? Two notions of "the same multi-loop":
+#  - exact sequence: the same sub-categories (whistle_type_chr) in the same
+#    order/position - e.g. two chains that are both A -> A -> B.
+#  - same composition: the same sub-categories regardless of order/position
+#    - e.g. A -> A -> B and A -> B -> A would count as the same pattern
+#    here, but not under "exact sequence" above.
+chain_patterns <- compute_multiloop_patterns(whistle_chains)
+multiloop_chains <- merge(multiloop_chains, chain_patterns, by = "chain_id")
+
+make_pattern_summary <- function(chains_df, pattern_col, match_type) {
+  patterns <- chains_df[[pattern_col]]
+  split_ids <- split(chains_df$chain_id, patterns)
+  split_recordings <- split(chains_df$recording, patterns)
+  out <- data.frame(
+    match_type = match_type,
+    pattern = names(split_ids),
+    n_occurrences = lengths(split_ids),
+    chain_ids = vapply(
+      split_ids, paste, collapse = "; ", FUN.VALUE = character(1)
+    ),
+    recordings = vapply(
+      split_recordings, function(x) paste(unique(x), collapse = "; "),
+      FUN.VALUE = character(1)
+    ),
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
+  out[order(-out$n_occurrences, out$pattern), ]
+}
+pattern_summary_ordered <- make_pattern_summary(
+  multiloop_chains, "ordered_pattern", "exact sequence"
+)
+pattern_summary_unordered <- make_pattern_summary(
+  multiloop_chains, "unordered_pattern", "same composition (any order)"
+)
+pattern_summary <- rbind(pattern_summary_ordered, pattern_summary_unordered)
+
+n_repeated_ordered <- sum(pattern_summary_ordered$n_occurrences > 1)
+n_repeated_unordered <- sum(pattern_summary_unordered$n_occurrences > 1)
+message(
+  n_repeated_ordered, " / ", nrow(pattern_summary_ordered),
+  " exact-sequence sub-category patterns recur across more than one chain; ",
+  n_repeated_unordered, " / ", nrow(pattern_summary_unordered),
+  " same-composition patterns do"
+)
+
+occurrence_distribution <- rbind(
+  transform(
+    as.data.frame(table(pattern_summary_ordered$n_occurrences)),
+    match_type = "exact sequence"
+  ),
+  transform(
+    as.data.frame(table(pattern_summary_unordered$n_occurrences)),
+    match_type = "same composition (any order)"
+  )
+)
+names(occurrence_distribution)[1:2] <- c("n_occurrences", "n_patterns")
+occurrence_distribution$n_occurrences <- as.integer(
+  as.character(occurrence_distribution$n_occurrences)
+)
+
+pattern_csv <- file.path(multiloop_dir, "multiloop_pattern_occurrences.csv")
+write.csv(pattern_summary, pattern_csv, row.names = FALSE)
+message("Saved ", pattern_csv)
+
 # How much of the Markov model's transition pairs (script 01, TIME_WINDOW)
 # connect two whistles that are themselves part of the same tight-IWI
 # multi-loop chain (MULTILOOP_IWI_THRESHOLD)? These are two independent
@@ -177,6 +242,36 @@ summary_lines <- c(
     " (", round(100 * n_diff_category_chains / n_multiloop_chains, 1), "%)"
   ),
   "",
+  "recurring sub-category patterns across multi-loop chains",
+  "(is a specific multi-loop seen more than once?):",
+  paste0(
+    "  exact sequence (same sub-categories, same position): ",
+    n_repeated_ordered, " / ", nrow(pattern_summary_ordered),
+    " distinct patterns recur across more than one chain"
+  ),
+  if (n_repeated_ordered > 0) {
+    top <- head(pattern_summary_ordered[pattern_summary_ordered$n_occurrences > 1, ], 5)
+    n_recordings <- lengths(strsplit(top$recordings, "; "))
+    paste0(
+      "    x", top$n_occurrences, ": ", top$pattern,
+      " (", n_recordings, " distinct recording(s))"
+    )
+  },
+  paste0(
+    "  same composition, any order: ",
+    n_repeated_unordered, " / ", nrow(pattern_summary_unordered),
+    " distinct patterns recur across more than one chain"
+  ),
+  if (n_repeated_unordered > 0) {
+    top <- head(pattern_summary_unordered[pattern_summary_unordered$n_occurrences > 1, ], 5)
+    n_recordings <- lengths(strsplit(top$recordings, "; "))
+    paste0(
+      "    x", top$n_occurrences, ": ", top$pattern,
+      " (", n_recordings, " distinct recording(s))"
+    )
+  },
+  "  full per-pattern breakdown: multiloop_pattern_occurrences.csv",
+  "",
   "Markov model transition / multi-loop chain overlap",
   paste(
     "TIME_WINDOW:", TIME_WINDOW[1], "-", TIME_WINDOW[2], "s",
@@ -208,7 +303,7 @@ summary_lines <- c(
 writeLines(summary_lines, file.path(multiloop_dir, "multiloop_summary.txt"))
 message("Saved ", file.path(multiloop_dir, "multiloop_summary.txt"))
 
-# -- combined figure: three panels -----------------------------------------
+# -- combined figure: four panels ------------------------------------------
 
 panel_length_by_category <- ggplot(
   multiloop_chains, aes(x = factor(chain_length), fill = leading_category)
@@ -279,17 +374,46 @@ panel_markov_overlap <- ggplot(
   ) +
   ylim(0, 100)
 
-layout_matrix <- rbind(c(1, 1), c(2, 3))
+panel_pattern_occurrence <- ggplot(
+  occurrence_distribution,
+  aes(x = factor(n_occurrences), y = n_patterns, fill = match_type)
+) +
+  geom_col(position = position_dodge(width = 0.7), color = "black", width = 0.65) +
+  geom_text(
+    aes(label = n_patterns),
+    position = position_dodge(width = 0.7), vjust = -0.3, size = 3
+  ) +
+  scale_fill_manual(
+    breaks = c("exact sequence", "same composition (any order)"),
+    values = c("#2297E6", "#F5C710")
+  ) +
+  theme_minimal() +
+  labs(
+    title = paste0(
+      "Multi-loop sub-category pattern recurrence (",
+      n_multiloop_chains, " multi-loop chains, ",
+      nrow(pattern_summary_ordered), " distinct exact-sequence patterns)"
+    ),
+    x = "number of chains sharing the same sub-category pattern",
+    y = "number of distinct patterns",
+    fill = "pattern match"
+  )
+
+layout_matrix <- rbind(c(1, 1), c(2, 3), c(4, 4))
 combined_plot <- gridExtra::arrangeGrob(
   panel_length_by_category, panel_category_composition, panel_markov_overlap,
+  panel_pattern_occurrence,
   layout_matrix = layout_matrix
 )
-save_ggplot(combined_plot, "multiloop_combined_summary", REPO_ROOT, width = 11, height = 12)
+save_ggplot(
+  combined_plot, "multiloop_combined_summary", REPO_ROOT,
+  width = 11, height = 16, subdir = "multiloops"
+)
 
 # Remove the earlier per-panel plots this combined figure replaces.
 for (name in c("multiloop_length_distribution", "multiloop_length_distribution_by_category")) {
   for (ext in c("pdf", "png")) {
-    stale_path <- plot_path(name, REPO_ROOT, ext = ext)
+    stale_path <- plot_path(name, REPO_ROOT, ext = ext, subdir = "multiloops")
     if (file.exists(stale_path)) file.remove(stale_path)
   }
 }

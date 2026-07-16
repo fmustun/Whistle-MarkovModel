@@ -25,7 +25,7 @@ source(file.path(REPO_ROOT, "R", "config.R"))
 source(file.path(REPO_ROOT, "R", "graph_utils.R"))
 source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
-ensure_plots_dir(REPO_ROOT)
+ensure_plots_dir(REPO_ROOT, "network_measures")
 
 rds_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")
 if (!file.exists(rds_path)) {
@@ -75,7 +75,8 @@ save_ggplot(
     theme(axis.text.x = element_text(angle = 45)) +
     labs(title = "Whistle occurrences by node"),
   "whistle_occurrences",
-  REPO_ROOT
+  REPO_ROOT,
+  subdir = "network_measures"
 )
 
 seq_category <- build_seq_category(whistles_list, list_names)
@@ -166,7 +167,8 @@ save_ggplot(
     ) +
     geom_hline(yintercept = 0.5, linetype = "dashed", color = "red", linewidth = 0.5),
   "prob_same_category_outbound",
-  REPO_ROOT
+  REPO_ROOT,
+  subdir = "network_measures"
 )
 
 df_order <- order_nodes_by_category(df3, list_names, "prob_diff_cat_outbound")
@@ -235,7 +237,8 @@ save_ggplot(
   gridExtra::arrangeGrob(g1, g3, g4, ncol = 1),
   "turn_taking_and_centrality",
   REPO_ROOT,
-  height = 14
+  height = 14,
+  subdir = "network_measures"
 )
 
 save_ggplot(
@@ -251,7 +254,8 @@ save_ggplot(
     labs(y = "strength in") +
     geom_text_repel(aes(label = nodes)),
   "betweenness_vs_strength_in",
-  REPO_ROOT
+  REPO_ROOT,
+  subdir = "network_measures"
 )
 
 save_ggplot(
@@ -266,7 +270,8 @@ save_ggplot(
     ) +
     geom_text_repel(aes(label = nodes)),
   "prob_diff_outbound_vs_betweenness",
-  REPO_ROOT
+  REPO_ROOT,
+  subdir = "network_measures"
 )
 
 save_ggplot(
@@ -288,7 +293,8 @@ save_ggplot(
     ) +
     geom_text_repel(aes(label = nodes)),
   "prob_diff_inbound_vs_outbound",
-  REPO_ROOT
+  REPO_ROOT,
+  subdir = "network_measures"
 )
 
 bet_str <- df3 %>%
@@ -306,7 +312,8 @@ save_ggplot(
     theme(axis.line = element_line(colour = "black")) +
     geom_text_repel(aes(label = category)),
   "category_mean_betweenness_vs_strength_in",
-  REPO_ROOT
+  REPO_ROOT,
+  subdir = "network_measures"
 )
 
 csv_path <- file.path(REPO_ROOT, OUTPUT_DIR, "node_measures.csv")

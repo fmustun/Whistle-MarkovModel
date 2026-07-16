@@ -314,15 +314,29 @@ plot_markov_graph <- function(
     coordinates = NULL,
     weight_reference_range = NULL,
     show_legend = TRUE,
-    main = NULL
+    main = NULL,
+    # Extra caption lines drawn under the network (e.g. explaining a
+    # non-default vertex/edge encoding) via mtext(). Rendered inside this
+    # function - not after it returns - so it shares the same par(mar=...)
+    # the network itself was drawn with; doing this from the caller after
+    # plot_markov_graph() returns would use the restored (larger) default
+    # margins instead and misalign the text against the already-rendered plot.
+    caption = NULL
 ) {
   if (is.null(coordinates)) coordinates <- compute_markov_layout(gra, seed)
   coordinates <- layout_for_graph(coordinates, gra)
   # plot.igraph does not touch par("mar"), so the default axis/title
   # margins (5.1/4.1/4.1/2.1 lines) otherwise eat a large, unused border
-  # around the network. Shrink to near-zero (a bit more at the bottom
-  # when the legend needs room) so the layout fills the figure.
-  old_par <- par(mar = if (show_legend) c(3, 0.5, 0.5, 0.5) else rep(0.5, 4))
+  # around the network. Shrink to near-zero (more at the bottom when the
+  # legend or a caption needs room) so the layout fills the figure.
+  bottom_margin <- if (show_legend) {
+    3
+  } else if (!is.null(caption)) {
+    length(caption) * 1.3 + 0.5
+  } else {
+    0.5
+  }
+  old_par <- par(mar = c(bottom_margin, 0.5, 0.5, 0.5))
   on.exit(par(old_par), add = TRUE)
   if (is.null(weight_reference_range)) {
     weight_reference_range <- range(E(gra)$weight)
@@ -370,6 +384,10 @@ plot_markov_graph <- function(
       col = "gray", pt.cex = 1.05, cex = 0.62, bty = "n",
       x.intersp = 0.45, y.intersp = 0.8
     )
+  }
+  if (!is.null(caption)) {
+    mtext(caption, side = 1, line = seq_along(caption) * 1.3 - 0.7,
+          cex = 0.6, adj = 0)
   }
   invisible(coordinates)
 }

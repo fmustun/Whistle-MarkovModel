@@ -21,6 +21,9 @@ install.packages(c("igraph", "ggplot2", "scales", "foreach", "doSNOW", "tnet",
                    "dplyr", "gridExtra", "ggrepel"))
 ```
 
+Script 05 (multi-loop spectrograms) is Python instead of R, and additionally
+needs: `numpy`, `scipy`, `matplotlib`, `soundfile`.
+
 ## Data
 
 See [data/README.md](data/README.md). Place `AllWhistlesSubClustering_final.csv` in `data/` (copy or symlink).
@@ -34,6 +37,10 @@ Rscript scripts/01_run_markov_model.R
 Rscript scripts/02_node_network_measures.R
 Rscript scripts/03_global_network_measures.R
 Rscript scripts/04_multiloop_analysis.R
+python3 scripts/05_plot_multiloop_spectrograms.py
+Rscript scripts/06_plot_multiloop_network.R
+Rscript scripts/07_plot_multiloop_type_network.R
+Rscript scripts/08_plot_multiloop_transitions_network.R
 ```
 
 Or in R:
@@ -44,6 +51,9 @@ source("scripts/01_run_markov_model.R")
 source("scripts/02_node_network_measures.R")
 source("scripts/03_global_network_measures.R")
 source("scripts/04_multiloop_analysis.R")
+source("scripts/06_plot_multiloop_network.R")
+source("scripts/07_plot_multiloop_type_network.R")
+source("scripts/08_plot_multiloop_transitions_network.R")
 ```
 
 ### Script overview
@@ -54,10 +64,18 @@ source("scripts/04_multiloop_analysis.R")
 | `02_node_network_measures.R` | Node metrics, turn-taking probabilities, bar/scatter plots | `outputs/node_measures.csv`, `outputs/plots/*.pdf` |
 | `03_global_network_measures.R` | Degree-preserving random networks, clustering p-value, small-world, communities | `outputs/global_null_metrics.rds`, `outputs/plots/*.pdf` |
 | `04_multiloop_analysis.R` | Group temporally adjacent whistles into multi-loop chains (250ms IWI threshold), summarize the chain-length population and its overlap with the Markov transitions | `outputs/multiloop_analysis/`, `outputs/plots/multiloop_combined_summary.pdf` |
+| `05_plot_multiloop_spectrograms.py` | Plot grayscale spectrograms (2-20kHz) of example multi-loop chains from the source audio, one figure per chain with every whistle in the chain marked | `outputs/multiloop_analysis/spectrograms/*.png` |
+| `06_plot_multiloop_network.R` | Plot a multi-loop-only network: script 01's node layout, but edges are multi-loop-internal transitions only, black border = same-type multi-loop repeat | `outputs/plots/multiloop_network_overlay.pdf`, `outputs/multiloop_analysis/{multiloop_edge_counts,node_multiloop_participation}.csv` |
+| `07_plot_multiloop_type_network.R` | Build a Markov-style transition network where each node is a distinct multi-loop composition (not an individual whistle); BH-corrected empirical shuffle-null significance test, only significant transitions plotted | `outputs/plots/multiloop_type_network.pdf`, `outputs/multiloop_analysis/{multiloop_type_nodes,multiloop_type_edges}.csv` |
+| `08_plot_multiloop_transitions_network.R` | Rebuild script 01's whistle-level network (same node universe, same BH-corrected significance test) with transition counts restricted to instances where both whistles are in the same multi-loop chain | `outputs/plots/multiloop_only_significant_network.pdf`, `outputs/multiloop_analysis/{multiloop_only_network_nodes,multiloop_only_network_edges}.csv` |
+
+Script 05 requires script 04's `outputs/multiloop_analysis/{multiloop_chains,multiloop_whistles}.csv` and read access to the raw `.wav` recordings (`--audio-dir`, default `/media/zfnews31/Dolphins/Sound`).
+
+Script 06 requires script 01's `outputs/markov_model.rds` (it computes multi-loop chains itself from the raw whistle CSV, like script 04).
 
 Figures are written as PDFs under `outputs/plots/` (created automatically). Data files remain in `outputs/`.
 
-Scripts 02 and 03 require `outputs/markov_model.rds` from script 01. Script 04 is standalone (only needs the raw whistle CSV).
+Scripts 02, 03, and 06 require `outputs/markov_model.rds` from script 01. Scripts 04, 07, and 08 are standalone (only need the raw whistle CSV), as is 06 aside from its script 01 dependency.
 
 ## Parameters
 
@@ -146,7 +164,7 @@ category of the whistle that starts it.
 `R/multiloop_utils.R` provides `compute_multiloop_chains()` (whistle-level
 chain assignment) and `summarize_multiloop_chains()` (one row per chain).
 Script 04 writes `outputs/multiloop_analysis/multiloop_whistles.csv` and
-`multiloop_chains.csv`, plus a combined three-panel figure at
+`multiloop_chains.csv`, plus a combined four-panel figure at
 `outputs/plots/multiloop_combined_summary.pdf`:
 
 1. Chain-length distribution broken down by leading category (the category
@@ -156,13 +174,39 @@ Script 04 writes `outputs/multiloop_analysis/multiloop_whistles.csv` and
    category" is the `LIST_NAMES`-level grouping, not the finer
    `whistle_type_chr` sub-category (e.g. `SW_Neo_Category_20`).
 3. The Markov-transition/multi-loop overlap ratios (see below).
+4. Sub-category pattern recurrence (see below).
 
 A chain of length 1 has no neighbor within the IWI threshold, so it isn't a
 multi-loop by definition. The CSVs retain these singleton rows (with
 `chain_length = 1`) for completeness, and the summary reports their count/
 percentage for context, but they are excluded from every multi-loop measure
-(mean/median/max chain length, chain-length counts, category composition)
-and from the figure.
+(mean/median/max chain length, chain-length counts, category composition,
+pattern recurrence) and from the figure.
+
+### Do specific multi-loops recur?
+
+Script 04 checks whether particular multi-loops show up more than once,
+under two definitions of "the same multi-loop":
+
+- **exact sequence**: the same sub-categories (`whistle_type_chr`) in the
+  same order/position, e.g. two chains that are both
+  `A -> A -> B`.
+- **same composition, any order**: the same sub-categories regardless of
+  position, e.g. `A -> A -> B` and `A -> B -> A` count as the same pattern
+  here (but not under "exact sequence").
+
+For this dataset, most patterns are unique, but there's a real recurring
+one: `SW_Luna_Category_17 -> SW_Luna_Category_17` (a repeated 2-loop of the
+same sub-category) appears in 73 different chains across 41 recordings —
+by far the most common recurring multi-loop, under either definition. The
+full per-pattern breakdown (pattern, occurrence count, and the specific
+`chain_id`s/recordings it appears in) is written to
+`outputs/multiloop_analysis/multiloop_pattern_occurrences.csv`; the top 5
+recurring patterns under each definition are listed in
+`multiloop_summary.txt`, and the fourth panel of the combined figure plots
+the full distribution — number of chains sharing a pattern (x) vs. number
+of distinct patterns with that many chains (y) — for both definitions
+side by side.
 
 ### Overlap with the Markov transition pairs
 
@@ -182,6 +226,192 @@ appear as a transition at all. Instance-level results are written to
 `outputs/multiloop_analysis/markov_transition_multiloop_overlap.csv`; the
 overall percentage plus a same-type vs. different-type breakdown appear in
 `multiloop_summary.txt` and in the third panel of the combined figure.
+
+### Example spectrograms
+
+`scripts/05_plot_multiloop_spectrograms.py` plots a grayscale spectrogram
+(2-20kHz, `scipy.signal.spectrogram` on a short audio segment read directly
+from the recording's `.wav` file) for a small set of example multi-loop
+chains, with every whistle in the chain drawn on the same figure (shaded
+span + label) so the repeated/looped structure is visible in one image. By
+default it picks up to 6 examples spread across the observed chain-length
+range (one per length, using the longest-duration chain at that length) so
+both common short loops and rare long ones are represented — pass
+`--chain-ids <chain_id> ...` to plot specific chains instead, or
+`--n-examples` to change the count. Output goes to
+`outputs/multiloop_analysis/spectrograms/<chain_id>.png`. Audio files are
+matched to the `recording` column by file stem (recursively under
+`--audio-dir`); only the needed segment is read from disk.
+
+### Multi-loop-only network
+
+`scripts/06_plot_multiloop_network.R` draws a separate network that reuses
+script 01's node set and layout (recomputed live from `gra1` via
+`compute_markov_layout(gra1, PLOT_SEED)` — the same call
+`markov_significant_network.pdf` uses internally — rather than a saved
+coordinates file: `layout_with_fr` is force-directed, so its result depends
+on the edge set it's run on, and this script's edges are about to be
+replaced) but replaces its edges entirely:
+
+- **Edges** are adjacent *different*-whistle-type pairs observed within
+  multi-loop chains (IWI < `MULTILOOP_IWI_THRESHOLD`) —
+  `compute_multiloop_edge_counts()` (`R/multiloop_utils.R`) — not the
+  Markov model's wide-`TIME_WINDOW` transitions. Edge width is the count of
+  that pair within multi-loop chains. A multi-loop pair whose whistle type
+  falls outside script 01's significant-node set is dropped (reported via
+  `message()`) rather than extending the network with new nodes.
+- **Node border**: black if that whistle has a same-type multi-loop repeat
+  (e.g. `A -> A` within a chain, `compute_self_repeat_counts()`), gray
+  otherwise. This replaces the node's usual black/gray meaning from script
+  01 (Markov self-transition significance) with a purely multi-loop-based
+  one, since this plot no longer shows Markov edges at all.
+
+Node fill color (category) is unchanged from script 01. Output goes to
+`outputs/plots/multiloop_network_overlay.pdf`, with the drawn edges and
+per-node self-repeat flags written to
+`outputs/multiloop_analysis/multiloop_edge_counts.csv` and
+`node_multiloop_participation.csv`. `plot_markov_graph()`
+(`R/graph_utils.R`) gained one optional `caption` parameter (default
+`NULL`, unused by scripts 01/01b) to label the plot's now-different edge
+and border meanings.
+
+### Multi-loop *type* network
+
+`scripts/07_plot_multiloop_type_network.R` builds a Markov-style network
+the same way script 01 does (transition counts → row-normalized
+probabilities via `ccber::CalcTransitionMatrix()` → directed graph, tested
+against a null model, BH-corrected, only significant edges plotted), but at
+a different unit: each **node is a distinct multi-loop composition** —
+`compute_multiloop_patterns()`'s `unordered_pattern`, i.e. the same
+sub-categories regardless of order/position (630 distinct compositions in
+this dataset, from `SW_Luna_Category_17 + SW_Luna_Category_17` — the most
+common, 73 chains — down to singletons). A candidate **edge** requires the
+next multi-loop chain in the same recording to start within `TIME_WINDOW`
+of the previous chain's end (same gap definition as `MarkovWhistle()`'s
+`time_interval`) — 310 of the 967 consecutive same-recording chain pairs in
+this dataset qualify. Multi-loop chains never overlap in time by
+construction (a new chain requires a >= `MULTILOOP_IWI_THRESHOLD` gap), so
+unlike `MarkovWhistle()` there's no need for its overlap/skip-to-next-candidate
+handling — just a direct window check.
+
+**Significance test.** `compute_multiloop_type_significance()`
+(`R/multiloop_utils.R`) runs the same empirical-p / BH-correction test
+script 01's `MarkovWhistle()` does, against the same `NULL_MODEL = "shuffle"`
+null model (a global permutation of which composition label sits on which
+multi-loop chain, keeping every chain's timing — and therefore which
+chain-pairs fall within `TIME_WINDOW` — fixed), then
+`adjust_transition_p_values()`/`select_transition_matrix()`
+(`R/statistical_utils.R`, unchanged) apply the same `MULTIPLE_TESTING_CORRECTION`
+and `GRAPH_ALPHA` as script 01. Only **significant** transitions
+(`adjusted p < GRAPH_ALPHA`) are drawn as edges. The iteration count is
+derived the same way script 01's `ITERATIONS` is documented to be derived —
+`recommended_iterations(m, GRAPH_ALPHA, margin = 5)` where `m` is the
+number of observed edges (~300 here, vs. ~1,200 at the whistle level) — so
+it scales with this network's own hypothesis-family size rather than
+reusing script 01's `ITERATIONS`. This network has far more nodes (630)
+relative to observed edges (~300) than the whistle-level network does, so
+building a dense 630×630 null-count matrix per iteration (as
+`MarkovWhistle()` does at the whistle level) would be mostly zeros and,
+at tens of thousands of iterations, too much memory/compute to hold;
+`compute_multiloop_type_significance()` instead computes the empirical
+p-value only at the observed-edge cells that can ever be significant
+(`adjust_transition_p_values()`'s `family_mask` already restricts the
+correction family to exactly those cells, so nothing downstream is
+affected by skipping the rest).
+
+Node color is the composition's single main category (same palette as the
+whistle-type network) if every whistle in it shares one, or a fixed mid
+gray if the composition spans more than one main category
+(`n_categories > 1`, e.g. an `SW_Neo` whistle immediately followed by an
+`SW_Luna` one within the same chain) — 361 single-category vs. 269
+mixed-category compositions in this dataset (white was tried first but read
+as too close to `NSW_9`'s very pale lavender, `#e6e6fa`). A **black node
+border** follows script 01's convention exactly: it marks a composition
+with a *significant* self-transition (a nonzero diagonal entry in the
+selected/significant matrix) — drawn as a border rather than a self-loop
+arc, which is then dropped from the edge set entirely (`delete_edges(...,
+which_loop(...))`, same as `compute_graph_from_selection()` does for script
+01's significant self-loops). The isolate filter (drop nodes with no
+significant transition at all) runs *before* that self-loop removal, again
+matching `compute_graph()`'s ordering — so a composition whose only
+significant transition is a self-loop still appears in the plot, as an
+isolated black-bordered dot with no edges, rather than being dropped (311
+of 630 remain; the full node set is still in `multiloop_type_nodes.csv`).
+This network gets its own independent layout (`compute_markov_layout()`,
+not tied to script 01's node positions, since its nodes are entirely
+different things). Output goes to `outputs/plots/multiloop_type_network.pdf`,
+with node/edge details in `outputs/multiloop_analysis/multiloop_type_nodes.csv`
+and `multiloop_type_edges.csv` (the latter includes every observed edge,
+not just the significant ones, with `empirical_p`/`bh_q`/`significant`
+columns alongside `is_self_transition`).
+
+### Multi-loop-only whistle-level network
+
+`scripts/08_plot_multiloop_transitions_network.R` is a third network,
+alongside script 01's full one and script 06's overlay: a **rebuild of
+script 01's whole pipeline** (transition counts → row-normalized
+probabilities → BH-corrected empirical shuffle-null test →
+`select_transition_matrix()` → `compute_graph_from_selection()`) on the
+**same node universe** — every whistle sub-category `MarkovWhistle()`
+would consider (86 in this dataset), not just script 01's already-pruned
+82-node subset — but with the transition counts feeding that test
+restricted to Markov transition instances where **both whistles belong to
+the same multi-loop chain**
+(`compute_markov_transition_multiloop_overlap()`'s `within_multiloop_chain`
+flag, IWI < `MULTILOOP_IWI_THRESHOLD`) — 970 of 4,671 instances (20.8%) in
+this dataset qualify, the same figure script 04 reports. This differs from
+script 06, which overlays raw (untested) multi-loop counts onto script 01's
+*existing* significant-network node positions; script 08 instead asks
+"what does the significant network look like if you only feed it
+multi-loop-internal transitions?", with its own independent
+`compute_markov_layout()` layout and its own significance test.
+
+The significance test reuses the same permutation machinery as script 07
+(`compute_permutation_transition_significance()`, `R/multiloop_utils.R`) —
+refactored out of `compute_multiloop_type_significance()` once script 08
+needed the identical logic at a different granularity (individual whistles
+here, not multi-loop chains) — under `NULL_MODEL = "shuffle"`: a global
+permutation of `whistle_type` across every whistle, keeping timing fixed.
+Since multi-loop chain membership is purely a function of gaps between
+start/end times, `within_multiloop_chain` (and therefore which transition
+instances even count) is unaffected by that permutation, so one null
+iteration only needs to permute the label vector and re-look-up the fixed
+set of transition-instance row pairs
+(`compute_markov_transition_multiloop_overlap()`'s new `from_row_id`/
+`to_row_id` columns — each instance's row position in the input whistle
+table, needed to look up a whistle's label under an arbitrary permutation).
+The iteration count is derived the same way as script 07's, from this
+network's own smaller hypothesis-family size (`m` ≈ 385 observed edges
+here, vs. ~1,200 at the full whistle level) via
+`recommended_iterations(m, GRAPH_ALPHA, margin = 5)`. `set.seed(SEED)` is
+called immediately before the null model, matching script 01, so results
+are reproducible run to run.
+
+Node/edge construction, category colors, and the black-border
+significant-self-transition convention are otherwise identical to script
+01's (same `compute_graph()`/`compute_graph_from_selection()` calls) — 76
+of 86 sub-categories retain at least one significant multi-loop-only
+transition. Output goes to
+`outputs/plots/multiloop_only_significant_network.pdf`, with node/edge
+details (including layout coordinates and every observed edge with
+`empirical_p`/`bh_q`/`significant` columns, not just the significant ones)
+in `outputs/multiloop_analysis/multiloop_only_network_nodes.csv` and
+`multiloop_only_network_edges.csv`.
+
+Filtering down to multi-loop-only edges frequently leaves the network not
+fully connected — e.g. two sub-categories that only ever transition to
+each other, nowhere near the main network in this dataset (76 nodes: one
+74-node component plus an isolated pair). Forcing `compute_markov_layout()`'s
+force-directed layout to place every component in one shared coordinate
+space stretches the whole plot to make room for these outliers, at the
+cost of legibility for the (much larger) main component. Instead, each
+connected component (`igraph::components()`, weak/undirected sense) gets
+its own independent layout and its own panel in the same figure — the
+largest component as the main panel, every smaller component stacked
+below it in its own (smaller) panel via `layout()` — so nothing is dropped
+from the plot, but nothing distorts the main network either. The node CSV
+carries `component`/`component_size` columns recording which panel each
+node ended up in.
 
 ## Lightweight validation
 

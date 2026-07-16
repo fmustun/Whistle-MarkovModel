@@ -6,3 +6,4 @@ outputs/
 data/*.csv
 Rplots.pdf
 .DS_Store
+__pycache__/

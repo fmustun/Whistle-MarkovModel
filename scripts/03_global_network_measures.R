@@ -24,6 +24,7 @@ source(file.path(REPO_ROOT, "R", "graph_utils.R"))
 source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
 ensure_plots_dir(REPO_ROOT)
+ensure_plots_dir(REPO_ROOT, "network_measures")
 
 rds_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")
 if (!file.exists(rds_path)) {
@@ -82,7 +83,8 @@ save_ggplot(
   "random_network_clustering_distribution",
   REPO_ROOT,
   width = 9,
-  height = 6
+  height = 6,
+  subdir = "network_measures"
 )
 
 SWC <- (transitivity(gra1, type = "global") / mean(rdm_clustering_coefficients)) /

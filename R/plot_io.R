@@ -1,17 +1,22 @@
-# Save figures under outputs/plots (see PLOTS_DIR in config.R).
+# Save figures under outputs/plots (see PLOTS_DIR in config.R), optionally
+# nested under a subdir (e.g. "multiloops", "network_measures").
 
-plots_dir <- function(repo_root) {
-  file.path(repo_root, PLOTS_DIR)
+plots_dir <- function(repo_root, subdir = NULL) {
+  if (is.null(subdir) || !nzchar(subdir)) {
+    file.path(repo_root, PLOTS_DIR)
+  } else {
+    file.path(repo_root, PLOTS_DIR, subdir)
+  }
 }
 
-ensure_plots_dir <- function(repo_root) {
-  out <- plots_dir(repo_root)
+ensure_plots_dir <- function(repo_root, subdir = NULL) {
+  out <- plots_dir(repo_root, subdir)
   dir.create(out, showWarnings = FALSE, recursive = TRUE)
   invisible(out)
 }
 
-plot_path <- function(name, repo_root, ext = "pdf") {
-  file.path(plots_dir(repo_root), paste0(name, ".", ext))
+plot_path <- function(name, repo_root, ext = "pdf", subdir = NULL) {
+  file.path(plots_dir(repo_root, subdir), paste0(name, ".", ext))
 }
 
 # Draws expr once (into the pdf device), then replays the recorded plot
@@ -41,12 +46,12 @@ with_pdf_plot <- function(
   invisible(c(path, png_path))
 }
 
-save_ggplot <- function(plot, name, repo_root, width = 8, height = 6, ...) {
+save_ggplot <- function(plot, name, repo_root, width = 8, height = 6, subdir = NULL, ...) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("ggplot2 is required to save plots", call. = FALSE)
   }
   paths <- vapply(c("pdf", "png"), function(ext) {
-    path <- plot_path(name, repo_root, ext = ext)
+    path <- plot_path(name, repo_root, ext = ext, subdir = subdir)
     ggplot2::ggsave(
       filename = path, plot = plot, width = width, height = height, ...
     )
