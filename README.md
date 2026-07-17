@@ -41,6 +41,7 @@ python3 scripts/05_plot_multiloop_spectrograms.py
 Rscript scripts/06_plot_multiloop_network.R
 Rscript scripts/07_plot_multiloop_type_network.R
 Rscript scripts/08_plot_multiloop_transitions_network.R
+Rscript scripts/09_plot_interevent_network.R
 ```
 
 Or in R:
@@ -54,6 +55,7 @@ source("scripts/04_multiloop_analysis.R")
 source("scripts/06_plot_multiloop_network.R")
 source("scripts/07_plot_multiloop_type_network.R")
 source("scripts/08_plot_multiloop_transitions_network.R")
+source("scripts/09_plot_interevent_network.R")
 ```
 
 ### Script overview
@@ -61,21 +63,29 @@ source("scripts/08_plot_multiloop_transitions_network.R")
 | Script | Purpose | Output |
 |--------|---------|--------|
 | `01_run_markov_model.R` | Build Markov model (null model + empirical p-values + BH correction), plot significant-transition network | `outputs/markov_model.rds`, `outputs/plots/markov_significant_network.pdf`, `outputs/bh_analysis/` |
-| `02_node_network_measures.R` | Node metrics, turn-taking probabilities, bar/scatter plots | `outputs/node_measures.csv`, `outputs/plots/*.pdf` |
-| `03_global_network_measures.R` | Degree-preserving random networks, clustering p-value, small-world, communities | `outputs/global_null_metrics.rds`, `outputs/plots/*.pdf` |
-| `04_multiloop_analysis.R` | Group temporally adjacent whistles into multi-loop chains (250ms IWI threshold), summarize the chain-length population and its overlap with the Markov transitions | `outputs/multiloop_analysis/`, `outputs/plots/multiloop_combined_summary.pdf` |
+| `02_node_network_measures.R` | Node metrics, turn-taking probabilities, bar/scatter plots | `outputs/node_measures.csv`, `outputs/plots/network_measures/*.pdf` |
+| `03_global_network_measures.R` | Degree-preserving random networks, clustering p-value, small-world, communities | `outputs/global_null_metrics.rds`, `outputs/plots/*.pdf`, `outputs/plots/network_measures/*.pdf` |
+| `04_multiloop_analysis.R` | Group temporally adjacent whistles into multi-loop chains (250ms IWI threshold), summarize the chain-length population and its overlap with the Markov transitions | `outputs/multiloop_analysis/`, `outputs/plots/multiloops/multiloop_combined_summary.pdf` |
 | `05_plot_multiloop_spectrograms.py` | Plot grayscale spectrograms (2-20kHz) of example multi-loop chains from the source audio, one figure per chain with every whistle in the chain marked | `outputs/multiloop_analysis/spectrograms/*.png` |
-| `06_plot_multiloop_network.R` | Plot a multi-loop-only network: script 01's node layout, but edges are multi-loop-internal transitions only, black border = same-type multi-loop repeat | `outputs/plots/multiloop_network_overlay.pdf`, `outputs/multiloop_analysis/{multiloop_edge_counts,node_multiloop_participation}.csv` |
-| `07_plot_multiloop_type_network.R` | Build a Markov-style transition network where each node is a distinct multi-loop composition (not an individual whistle); BH-corrected empirical shuffle-null significance test, only significant transitions plotted | `outputs/plots/multiloop_type_network.pdf`, `outputs/multiloop_analysis/{multiloop_type_nodes,multiloop_type_edges}.csv` |
-| `08_plot_multiloop_transitions_network.R` | Rebuild script 01's whistle-level network (same node universe, same BH-corrected significance test) with transition counts restricted to instances where both whistles are in the same multi-loop chain | `outputs/plots/multiloop_only_significant_network.pdf`, `outputs/multiloop_analysis/{multiloop_only_network_nodes,multiloop_only_network_edges}.csv` |
+| `06_plot_multiloop_network.R` | Plot a multi-loop-only network: script 01's node layout, but edges are multi-loop-internal transitions only, black border = same-type multi-loop repeat | `outputs/plots/multiloops/multiloop_network_overlay.pdf`, `outputs/multiloop_analysis/{multiloop_edge_counts,node_multiloop_participation}.csv` |
+| `07_plot_multiloop_type_network.R` | Build a Markov-style transition network where each node is a distinct multi-loop composition (not an individual whistle); BH-corrected empirical shuffle-null significance test, only significant transitions plotted | `outputs/plots/multiloops/multiloop_type_network.pdf`, `outputs/multiloop_analysis/{multiloop_type_nodes,multiloop_type_edges}.csv` |
+| `08_plot_multiloop_transitions_network.R` | Rebuild script 01's whistle-level network (same node universe, same BH-corrected significance test) with transition counts restricted to instances where both whistles ARE in the same multi-loop chain | `outputs/plots/multiloops/multiloop_only_significant_network.pdf`, `outputs/multiloop_analysis/{multiloop_only_network_nodes,multiloop_only_network_edges}.csv` |
+| `09_plot_interevent_network.R` | The complement of script 08: same rebuild, but transition counts are restricted to instances where the two whistles are NOT in the same multi-loop chain | `outputs/plots/multiloops/interevent_significant_network.pdf`, `outputs/multiloop_analysis/{interevent_network_nodes,interevent_network_edges}.csv` |
 
 Script 05 requires script 04's `outputs/multiloop_analysis/{multiloop_chains,multiloop_whistles}.csv` and read access to the raw `.wav` recordings (`--audio-dir`, default `/media/zfnews31/Dolphins/Sound`).
+
+Plots are organized under `outputs/plots/`: multi-loop-related figures (scripts
+04, 06-09) go in `outputs/plots/multiloops/`, per-node/global network-measure
+figures (scripts 02-03) go in `outputs/plots/network_measures/`, and script
+01's main network plot (plus script 03's community-detection plots) stay at
+the top level. `plot_path()`/`ensure_plots_dir()`/`save_ggplot()`
+(`R/plot_io.R`) all take an optional `subdir` argument for this.
 
 Script 06 requires script 01's `outputs/markov_model.rds` (it computes multi-loop chains itself from the raw whistle CSV, like script 04).
 
 Figures are written as PDFs under `outputs/plots/` (created automatically). Data files remain in `outputs/`.
 
-Scripts 02, 03, and 06 require `outputs/markov_model.rds` from script 01. Scripts 04, 07, and 08 are standalone (only need the raw whistle CSV), as is 06 aside from its script 01 dependency.
+Scripts 02, 03, and 06 require `outputs/markov_model.rds` from script 01. Scripts 04, 07, 08, and 09 are standalone (only need the raw whistle CSV), as is 06 aside from its script 01 dependency.
 
 ## Parameters
 
@@ -165,7 +175,7 @@ category of the whistle that starts it.
 chain assignment) and `summarize_multiloop_chains()` (one row per chain).
 Script 04 writes `outputs/multiloop_analysis/multiloop_whistles.csv` and
 `multiloop_chains.csv`, plus a combined four-panel figure at
-`outputs/plots/multiloop_combined_summary.pdf`:
+`outputs/plots/multiloops/multiloop_combined_summary.pdf`:
 
 1. Chain-length distribution broken down by leading category (the category
    of the whistle that starts each chain).
@@ -267,7 +277,7 @@ replaced) but replaces its edges entirely:
   one, since this plot no longer shows Markov edges at all.
 
 Node fill color (category) is unchanged from script 01. Output goes to
-`outputs/plots/multiloop_network_overlay.pdf`, with the drawn edges and
+`outputs/plots/multiloops/multiloop_network_overlay.pdf`, with the drawn edges and
 per-node self-repeat flags written to
 `outputs/multiloop_analysis/multiloop_edge_counts.csv` and
 `node_multiloop_participation.csv`. `plot_markov_graph()`
@@ -339,7 +349,7 @@ isolated black-bordered dot with no edges, rather than being dropped (311
 of 630 remain; the full node set is still in `multiloop_type_nodes.csv`).
 This network gets its own independent layout (`compute_markov_layout()`,
 not tied to script 01's node positions, since its nodes are entirely
-different things). Output goes to `outputs/plots/multiloop_type_network.pdf`,
+different things). Output goes to `outputs/plots/multiloops/multiloop_type_network.pdf`,
 with node/edge details in `outputs/multiloop_analysis/multiloop_type_nodes.csv`
 and `multiloop_type_edges.csv` (the latter includes every observed edge,
 not just the significant ones, with `empirical_p`/`bh_q`/`significant`
@@ -392,10 +402,10 @@ significant-self-transition convention are otherwise identical to script
 01's (same `compute_graph()`/`compute_graph_from_selection()` calls) — 76
 of 86 sub-categories retain at least one significant multi-loop-only
 transition. Output goes to
-`outputs/plots/multiloop_only_significant_network.pdf`, with node/edge
-details (including layout coordinates and every observed edge with
-`empirical_p`/`bh_q`/`significant` columns, not just the significant ones)
-in `outputs/multiloop_analysis/multiloop_only_network_nodes.csv` and
+`outputs/plots/multiloops/multiloop_only_significant_network.pdf`, with
+node/edge details (including layout coordinates and every observed edge
+with `empirical_p`/`bh_q`/`significant` columns, not just the significant
+ones) in `outputs/multiloop_analysis/multiloop_only_network_nodes.csv` and
 `multiloop_only_network_edges.csv`.
 
 Filtering down to multi-loop-only edges frequently leaves the network not
@@ -404,14 +414,60 @@ each other, nowhere near the main network in this dataset (76 nodes: one
 74-node component plus an isolated pair). Forcing `compute_markov_layout()`'s
 force-directed layout to place every component in one shared coordinate
 space stretches the whole plot to make room for these outliers, at the
-cost of legibility for the (much larger) main component. Instead, each
-connected component (`igraph::components()`, weak/undirected sense) gets
-its own independent layout and its own panel in the same figure — the
-largest component as the main panel, every smaller component stacked
-below it in its own (smaller) panel via `layout()` — so nothing is dropped
-from the plot, but nothing distorts the main network either. The node CSV
-carries `component`/`component_size` columns recording which panel each
-node ended up in.
+cost of legibility for the (much larger) main component. Instead,
+`plot_network_by_component()` (`R/graph_utils.R`) splits the graph by
+connected component (`igraph::components()`, weak/undirected sense) and
+gives each its own independent layout and its own panel in the same
+figure — the largest component as the main panel, every smaller component
+stacked below it in its own (smaller) panel via `layout()` — so nothing is
+dropped from the plot, but nothing distorts the main network either. It
+returns the combined node table (with `component`/`component_size`
+columns recording which panel each node ended up in) ready to write to
+CSV, so a caller just needs a significant-transitions graph and a caption;
+scripts 08 and 09 (below) both call it directly rather than duplicating
+the layout/panel logic.
+
+### Inter-event network
+
+`scripts/09_plot_interevent_network.R` is script 08's exact complement:
+same rebuild-of-script-01 pipeline, same node universe, same significance
+test, but transition counts are restricted to instances where the two
+whistles **do NOT** belong to the same multi-loop chain — "inter-event"
+transitions, in the sense of crossing between separate multi-loop chains
+(or between a chain and a singleton) rather than staying within one. Every
+Markov transition instance is within a multi-loop chain (script 08) or is
+not (script 09) — the two scripts' edge lists exactly partition
+`compute_markov_transition_multiloop_overlap()`'s full output, and never
+overlap. In this dataset 3,701 of 4,671 instances (79.2%) qualify — the
+complement of script 08's 20.8% — giving a much larger hypothesis family
+(`m` ≈ 1,065 vs. ~385) and a correspondingly larger derived iteration
+count. 84 of 86 sub-categories retain a significant inter-event
+transition, and (unlike script 08) the result is a single connected
+component in this dataset, so `plot_network_by_component()` renders it as
+one panel. Output goes to
+`outputs/plots/multiloops/interevent_significant_network.pdf`, with
+node/edge details in
+`outputs/multiloop_analysis/interevent_network_nodes.csv` and
+`interevent_network_edges.csv`.
+
+### Betweenness vs. strength (multi-loop-only / inter-event)
+
+Both scripts 08 and 09 also call `plot_betweenness_strength_scatter()`
+(`R/graph_utils.R`) on their respective significant graph, producing
+`outputs/plots/multiloops/multiloop_only_betweenness_vs_strength.pdf` and
+`interevent_betweenness_vs_strength.pdf` — a scatter of each node's
+betweenness against its total strength, each normalized to `[0, 1]` by
+dividing by its own max within that network, with a marginal histogram
+along each axis (plus a fitted exponential density curve, `rate = 1 /
+mean` — the simplest single-parameter model for the right-skewed shape
+these centrality measures typically have). Red dashed lines mark each
+measure's empirical 90th percentile; a node is labeled with its id when it
+exceeds *either* line (an outlier on betweenness, strength, or both) —
+this is a different (and stricter) rule than script 02's existing
+`betweenness_vs_strength_in` plot, which labels every node and uses
+in-strength rather than total strength. This is a generic, reusable
+function — not tied to multi-loop analysis — so it could equally be
+pointed at `gra1` or any other significant-transitions graph.
 
 ## Lightweight validation
 

@@ -102,6 +102,12 @@ with_pdf_plot(
   )
 )
 
+message("Plotting betweenness vs. strength...")
+plot_betweenness_strength_scatter(
+  gra1,
+  plot_path("markov_betweenness_vs_strength", REPO_ROOT)
+)
+
 out_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")
 saveRDS(
   list(

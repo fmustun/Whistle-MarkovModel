@@ -392,6 +392,143 @@ plot_markov_graph <- function(
   invisible(coordinates)
 }
 
+# Plots `gra` split into its connected components (weak/undirected sense)
+# instead of one shared layout, and returns a ready-to-write node table.
+#
+# Filtering a Markov network down to a subset of edges (multi-loop-only,
+# inter-event-only, ...) frequently leaves it not fully connected - e.g. a
+# pair of sub-categories that only ever transition to each other, nowhere
+# near the rest of the network in the data. Forcing
+# compute_markov_layout()'s force-directed layout to place every component
+# in one shared coordinate space stretches the whole plot to make room for
+# these outliers, at the cost of legibility for the (much larger) main
+# component. Instead, the largest component gets a full-size main panel
+# with its own independent layout, and every other component gets its own
+# compact panel stacked below it (smallest scaled down further via
+# half_width, since two points normalized to fill a wide box otherwise
+# read as needlessly spread out) - so nothing is dropped from the plot,
+# but nothing distorts the main network's layout either.
+#
+# Returns a data frame (id, sub_category, category, occurrences,
+# has_significant_self_transition, component, component_size, x, y), one
+# row per plotted node, sorted by component (largest first) then id -
+# callers write this straight to a nodes CSV rather than repeating the
+# per-component layout/attribute bookkeeping themselves.
+plot_network_by_component <- function(
+    gra, path, width = 9, height = 9, list_names = LIST_NAMES,
+    seed = PLOT_SEED, caption = NULL
+) {
+  components_info <- components(gra, mode = "weak")
+  component_order <- order(-components_info$csize)
+  n_components <- components_info$no
+  message(
+    n_components, " connected component(s) in the plotted network (sizes: ",
+    paste(components_info$csize[component_order], collapse = ", "), ")"
+  )
+
+  component_graphs <- lapply(component_order, function(component_id) {
+    induced_subgraph(gra, V(gra)[components_info$membership == component_id])
+  })
+  main_size <- components_info$csize[component_order[1]]
+  component_coordinates <- lapply(component_graphs, function(g_i) {
+    half_width <- max(0.3, 1.3 * sqrt(vcount(g_i) / main_size))
+    compute_markov_layout(g_i, seed = seed, half_width = half_width)
+  })
+  # plot_markov_graph() defaults weight_reference_range to that call's own
+  # range(E(gra)$weight), which is degenerate (min == max, so
+  # rescale_from_reference() errors) whenever a component has only a
+  # single edge - true of every small disconnected component typically
+  # seen here. Pass one shared range, computed across all edges before the
+  # split, to every panel so edge widths stay on the same, non-degenerate
+  # scale.
+  weight_reference_range <- range(E(gra)$weight)
+
+  main_caption <- caption
+  if (n_components > 1) {
+    main_caption <- c(main_caption, paste0(
+      "largest connected component shown above (", vcount(component_graphs[[1]]),
+      " / ", vcount(gra), " plotted nodes); ",
+      n_components - 1L, " smaller disconnected component(s) shown below"
+    ))
+  }
+
+  with_pdf_plot(
+    path,
+    width = width,
+    height = height,
+    {
+      if (n_components == 1) {
+        plot_markov_graph(
+          component_graphs[[1]],
+          list_names = list_names,
+          seed = seed,
+          coordinates = component_coordinates[[1]],
+          weight_reference_range = weight_reference_range,
+          show_legend = FALSE,
+          caption = main_caption
+        )
+      } else {
+        n_other <- n_components - 1L
+        # Row 1 = the main component, spanning every column; row 2 = one
+        # column per smaller component, sized well below the main row.
+        layout(
+          matrix(
+            c(rep(1L, n_other), seq_len(n_other) + 1L),
+            nrow = 2, byrow = TRUE
+          ),
+          heights = c(5, 1.4)
+        )
+        plot_markov_graph(
+          component_graphs[[1]],
+          list_names = list_names,
+          seed = seed,
+          coordinates = component_coordinates[[1]],
+          weight_reference_range = weight_reference_range,
+          show_legend = FALSE,
+          caption = main_caption
+        )
+        for (i in seq_len(n_other)) {
+          g_i <- component_graphs[[i + 1L]]
+          plot_markov_graph(
+            g_i,
+            list_names = list_names,
+            seed = seed,
+            coordinates = component_coordinates[[i + 1L]],
+            weight_reference_range = weight_reference_range,
+            show_legend = FALSE,
+            # A `main=` title uses plot.igraph()'s default title cex, sized
+            # for the large main panel - comically oversized on these
+            # small ones. caption's smaller, fixed cex reads correctly
+            # regardless of panel size.
+            caption = paste0(
+              "component ", i + 1L, " (", vcount(g_i), " node",
+              if (vcount(g_i) > 1) "s" else "", ")"
+            )
+          )
+        }
+      }
+    }
+  )
+
+  node_table <- do.call(rbind, lapply(seq_along(component_graphs), function(i) {
+    g_i <- component_graphs[[i]]
+    coords_i <- component_coordinates[[i]]
+    data.frame(
+      node_id = as.integer(V(g_i)$name),
+      sub_category = V(g_i)$sub_category,
+      category = V(g_i)$category,
+      occurrences = V(g_i)$occurrences,
+      has_significant_self_transition = V(g_i)$vertex.frame.col == "black",
+      component = i,
+      component_size = vcount(g_i),
+      x = coords_i[, "x"],
+      y = coords_i[, "y"],
+      stringsAsFactors = FALSE
+    )
+  }))
+  node_table[order(node_table$component, node_table$node_id), ]
+}
+
 order_nodes_by_category <- function(df, list_names, order_col) {
   nodes_ordered <- c()
   for (i in seq_along(list_names)) {
@@ -402,4 +539,119 @@ order_nodes_by_category <- function(df, list_names, order_col) {
   }
   df$nodes <- factor(as.character(df$nodes), levels = unique(nodes_ordered))
   df
+}
+
+# Scatter of node betweenness vs. total strength, each normalized to [0, 1]
+# by dividing by its own max within `gra`, with a marginal histogram (plus
+# a fitted-exponential density curve, rate = 1 / mean) along each axis -
+# the two centrality measures are typically right-skewed/heavy-tailed, and
+# an exponential is the simplest single-parameter model for that shape.
+# Red dashed lines mark each measure's empirical 90th percentile; a node is
+# labeled with its id when it exceeds *either* line (an outlier on
+# betweenness, strength, or both) - unremarkable nodes clustered near the
+# origin are left unlabeled to keep that region legible.
+plot_betweenness_strength_scatter <- function(
+    gra, path, width = 8, height = 8, percentile = 0.9, n_bins = 10
+) {
+  betweenness_norm <- betweenness(gra)
+  betweenness_norm <- betweenness_norm / max(betweenness_norm)
+  strength_norm <- strength(gra, mode = "all")
+  strength_norm <- strength_norm / max(strength_norm)
+
+  betweenness_threshold <- quantile(betweenness_norm, percentile, names = FALSE)
+  strength_threshold <- quantile(strength_norm, percentile, names = FALSE)
+  labeled <- betweenness_norm > betweenness_threshold |
+    strength_norm > strength_threshold
+
+  # Exponential MLE: rate = 1 / mean. Guarded against a degenerate
+  # all-zero measure (e.g. a graph with no betweenness-carrying paths),
+  # which would otherwise divide by zero.
+  betweenness_rate <- if (mean(betweenness_norm) > 0) {
+    1 / mean(betweenness_norm)
+  } else {
+    NA
+  }
+  strength_rate <- if (mean(strength_norm) > 0) 1 / mean(strength_norm) else NA
+
+  breaks <- seq(0, 1, length.out = n_bins + 1)
+  curve_x <- seq(0, 1, length.out = 200)
+
+  # Shared margins keep the three panels aligned: top-hist and main share
+  # left/right (both in layout's left column); right-hist and main share
+  # bottom/top (both in layout's bottom row).
+  left_margin <- 4.5
+  right_margin <- 0.5
+  bottom_margin <- 7.2
+  top_margin <- 1
+
+  with_pdf_plot(
+    path,
+    width = width,
+    height = height,
+    {
+      layout(
+        matrix(c(2, 0, 1, 3), nrow = 2, byrow = TRUE),
+        widths = c(4, 1), heights = c(1, 4)
+      )
+
+      par(mar = c(bottom_margin, left_margin, top_margin - 0.5, right_margin))
+      plot(
+        betweenness_norm, strength_norm,
+        xlim = c(0, 1), ylim = c(0, 1), xaxs = "i", yaxs = "i",
+        pch = 21, bg = V(gra)$color, col = "black", cex = 1.6,
+        xlab = "betweenness (normalized)", ylab = "strength (normalized)",
+        las = 1
+      )
+      abline(v = betweenness_threshold, col = "red", lty = 3, lwd = 1.5)
+      abline(h = strength_threshold, col = "red", lty = 3, lwd = 1.5)
+      if (any(labeled)) {
+        text(
+          betweenness_norm[labeled], strength_norm[labeled],
+          labels = V(gra)$name[labeled], pos = 3, cex = 0.8, xpd = NA
+        )
+      }
+      mtext(
+        c(
+          paste0(
+            "betweenness/strength each normalized by their own max in this network; red dashed lines = ",
+            percentile * 100, "th percentile of each"
+          ),
+          "labeled nodes exceed either threshold; blue curve on marginal histograms = fitted exponential density (rate = 1 / mean)"
+        ),
+        side = 1, line = c(4.2, 5.5), cex = 0.55, adj = 0
+      )
+
+      par(mar = c(top_margin - 0.5, left_margin, top_margin, right_margin))
+      hist(
+        betweenness_norm, breaks = breaks, freq = FALSE,
+        col = "gray70", border = "white", main = "", xlab = "", ylab = "",
+        xlim = c(0, 1), xaxs = "i", xaxt = "n", las = 1
+      )
+      if (is.finite(betweenness_rate)) {
+        lines(curve_x, dexp(curve_x, rate = betweenness_rate),
+              col = "steelblue", lwd = 2)
+      }
+
+      par(mar = c(bottom_margin, right_margin, top_margin - 0.5, right_margin + 0.5))
+      h_right <- hist(strength_norm, breaks = breaks, plot = FALSE)
+      right_xmax <- max(h_right$density, if (is.finite(strength_rate)) {
+        dexp(0, rate = strength_rate)
+      } else {
+        0
+      })
+      plot.new()
+      plot.window(xlim = c(0, right_xmax * 1.05), ylim = c(0, 1), yaxs = "i")
+      rect(
+        xleft = 0, ybottom = h_right$breaks[-length(h_right$breaks)],
+        xright = h_right$density, ytop = h_right$breaks[-1],
+        col = "gray70", border = "white"
+      )
+      if (is.finite(strength_rate)) {
+        lines(dexp(curve_x, rate = strength_rate), curve_x,
+              col = "steelblue", lwd = 2)
+      }
+      axis(1)
+      box()
+    }
+  )
 }

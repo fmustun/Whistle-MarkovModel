@@ -1,18 +1,15 @@
 #!/usr/bin/env Rscript
 
-# A third whistle-level network alongside script 01's full one: the same
-# node universe (every whistle sub-category MarkovWhistle() would consider,
-# not just script 01's already-significant subset) and the exact same
+# The complement of script 08: same node universe (every whistle
+# sub-category MarkovWhistle() would consider) and the exact same
 # BH-corrected empirical-shuffle significance test, but the transition
 # counts feeding that test are restricted to Markov transition instances
-# where both whistles belong to the same multi-loop chain (IWI <
-# MULTILOOP_IWI_THRESHOLD; compute_markov_transition_multiloop_overlap()'s
-# within_multiloop_chain flag) - i.e. "does the significant Markov
-# structure look different if you only look at multi-loop-internal
-# transitions?" This is a rebuild of script 01's whole pipeline on a
-# filtered edge list, not an overlay on top of script 01's existing
-# network (that's scripts/06, which uses raw multi-loop counts with no
-# significance test and pins node positions to script 01's layout).
+# where the two whistles do NOT belong to the same multi-loop chain
+# (compute_markov_transition_multiloop_overlap()'s within_multiloop_chain
+# flag, negated) - "inter-event" transitions, i.e. every Markov transition
+# except the multi-loop-internal ones script 08 isolates. Together, script
+# 08's edge list and this one's exactly partition every Markov transition
+# instance MarkovWhistle() would ever count.
 
 suppressPackageStartupMessages({
   library(igraph)
@@ -51,7 +48,7 @@ whistles_list <- load_whistles(DATA_PATH)
 # significance test happens to retain (gra1 is already a pruned subset).
 whistle_number <- max(whistles_list$whistle_type)
 
-# -- transition instances restricted to multi-loop-internal pairs -----------
+# -- transition instances excluding multi-loop-internal pairs ---------------
 
 message(
   "Grouping whistles into multi-loop chains (IWI < ",
@@ -62,10 +59,10 @@ overlap <- compute_markov_transition_multiloop_overlap(
   whistles_list, time_window = TIME_WINDOW,
   threshold = MULTILOOP_IWI_THRESHOLD, list_names = LIST_NAMES
 )
-filtered <- overlap[overlap$within_multiloop_chain, ]
+filtered <- overlap[!overlap$within_multiloop_chain, ]
 message(
   nrow(filtered), " / ", nrow(overlap),
-  " Markov transition instances are within a multi-loop chain (",
+  " Markov transition instances are inter-event (not within a multi-loop chain) (",
   round(100 * nrow(filtered) / nrow(overlap), 1), "%)"
 )
 
@@ -82,22 +79,22 @@ transition_probabilities_matrix <- CalcTransitionMatrix(transition_counts_matrix
 # chain membership is purely a function of gaps between start/end times,
 # within_multiloop_chain (and therefore which transition instances are
 # even candidates here) is unaffected by that permutation. So, exactly as
-# in script 07, one null iteration only needs to permute the label vector
-# and re-look-up the fixed set of transition-instance row pairs -
+# in scripts 07/08, one null iteration only needs to permute the label
+# vector and re-look-up the fixed set of transition-instance row pairs -
 # `filtered$from_row_id`/`to_row_id` - rather than rebuilding chain
 # structure per iteration the way MarkovWhistle() rebuilds transitions.
 labels <- whistles_list$whistle_type
 m <- sum(transition_counts_matrix > 0)
-iterations_ml <- recommended_iterations(m, GRAPH_ALPHA, margin = 5)
+iterations_ie <- recommended_iterations(m, GRAPH_ALPHA, margin = 5)
 message(
-  "Compute multi-loop-only null model (", m, " observed edges, ",
-  "GRAPH_ALPHA = ", GRAPH_ALPHA, " -> ", iterations_ml,
+  "Compute inter-event null model (", m, " observed edges, ",
+  "GRAPH_ALPHA = ", GRAPH_ALPHA, " -> ", iterations_ie,
   " shuffle-null iterations)..."
 )
 set.seed(SEED)
 significance <- compute_permutation_transition_significance(
   labels, filtered$from_row_id, filtered$to_row_id, whistle_number,
-  transition_counts_matrix, iterations = iterations_ml
+  transition_counts_matrix, iterations = iterations_ie
 )
 
 family_mask <- transition_probabilities_matrix > 0
@@ -134,19 +131,19 @@ if (MULTIPLE_TESTING_CORRECTION == "BH") {
   names(edge_table)[names(edge_table) == "adjusted_p"] <- "bh_q"
 }
 edge_table <- edge_table[order(-edge_table$n), ]
-edge_csv <- file.path(multiloop_dir, "multiloop_only_network_edges.csv")
+edge_csv <- file.path(multiloop_dir, "interevent_network_edges.csv")
 write.csv(edge_table, edge_csv, row.names = FALSE)
 message("Saved ", edge_csv, " (", nrow(edge_table), " edges, ",
         sum(selection$mask), " significant)")
 
 # -- graph + plot -------------------------------------------------------------
 
-# Same node/edge construction path as script 01's gra1 - compute_graph()
-# assigns category colors and drops zero-degree nodes, compute_graph_from_
-# selection() marks significant self-transitions with a black border and
-# drops the self-loop edges themselves - just fed transition_matrix =
-# selection$matrix built from the multi-loop-filtered counts above instead
-# of MarkovWhistle()'s full transition matrix.
+# Same node/edge construction path as script 01's gra1 (and script 08's) -
+# compute_graph() assigns category colors and drops zero-degree nodes,
+# compute_graph_from_selection() marks significant self-transitions with a
+# black border and drops the self-loop edges themselves - just fed
+# transition_matrix = selection$matrix built from the inter-event-filtered
+# counts above instead of MarkovWhistle()'s full transition matrix.
 whistle_occurrence <- table(whistles_list$whistle_type)
 selected_graphs <- compute_graph_from_selection(
   transition_matrix = selection$matrix,
@@ -162,38 +159,38 @@ selected_graphs <- compute_graph_from_selection(
   },
   raw_p_values = significance$p_value_matrix
 )
-gra_multiloop_only <- selected_graphs$no_loops
+gra_interevent <- selected_graphs$no_loops
 
 message(
-  vcount(gra_multiloop_only), " / ", whistle_number,
+  vcount(gra_interevent), " / ", whistle_number,
   " whistle sub-categories have at least one significant",
-  " multi-loop-only transition (plotted)"
+  " inter-event transition (plotted)"
 )
 
-message("Plotting multi-loop-only significant network...")
+message("Plotting inter-event significant network...")
 node_table <- plot_network_by_component(
-  gra_multiloop_only,
-  plot_path("multiloop_only_significant_network", REPO_ROOT, subdir = "multiloops"),
+  gra_interevent,
+  plot_path("interevent_significant_network", REPO_ROOT, subdir = "multiloops"),
   caption = c(
     "same node universe and significance test as the full Markov network (script 01)",
     paste0(
-      "transition counts restricted to instances where both whistles are in the same multi-loop chain (IWI < ",
+      "transition counts restricted to instances where the two whistles are NOT in the same multi-loop chain (IWI < ",
       MULTILOOP_IWI_THRESHOLD * 1000, "ms) - ", nrow(filtered), " / ", nrow(overlap), " (",
       round(100 * nrow(filtered) / nrow(overlap), 1), "%) of all Markov transition instances qualify"
     ),
     paste0(
       MULTIPLE_TESTING_CORRECTION, "-adjusted p < ", GRAPH_ALPHA,
-      " vs. a shuffle-null model (", iterations_ml, " iterations); ",
+      " vs. a shuffle-null model (", iterations_ie, " iterations); ",
       "black border = significant self-transition (not drawn as an edge)"
     )
   )
 )
-node_csv <- file.path(multiloop_dir, "multiloop_only_network_nodes.csv")
+node_csv <- file.path(multiloop_dir, "interevent_network_nodes.csv")
 write.csv(node_table, node_csv, row.names = FALSE)
 message("Saved ", node_csv)
 
 message("Plotting betweenness vs. strength...")
 plot_betweenness_strength_scatter(
-  gra_multiloop_only,
-  plot_path("multiloop_only_betweenness_vs_strength", REPO_ROOT, subdir = "multiloops")
+  gra_interevent,
+  plot_path("interevent_betweenness_vs_strength", REPO_ROOT, subdir = "multiloops")
 )
