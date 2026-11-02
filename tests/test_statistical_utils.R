@@ -65,4 +65,46 @@ stopifnot(
     as.integer(ceiling(100 / 0.05))
 )
 
+# observed strength (diagonal stripped): node1 = 5+2=7, node2 = 4+2=6,
+# node3 = 2+7=9. Both null iterations strip to strength 4 and 0 respectively
+# for every node, so null_mean = 2 and null_sd = sqrt(8) for all three.
+observed_counts <- matrix(c(1, 2, 3, 0, 1, 4, 2, 0, 1), nrow = 3, byrow = TRUE)
+null_counts <- list(
+  matrix(c(0, 1, 1, 1, 0, 1, 1, 1, 0), nrow = 3, byrow = TRUE),
+  matrix(0, nrow = 3, ncol = 3)
+)
+strength_null <- strength_null_distribution(
+  observed_counts, null_counts, progress_every = 0L
+)
+stopifnot(
+  isTRUE(all.equal(strength_null$observed_strength, c(7, 6, 9))),
+  isTRUE(all.equal(strength_null$null_mean, c(2, 2, 2))),
+  isTRUE(all.equal(strength_null$null_sd, rep(sqrt(8), 3))),
+  isTRUE(all.equal(
+    strength_null$z_score, c(5, 4, 7) / sqrt(8)
+  )),
+  # Neither null iteration (strength 4 or 0) ever reaches the observed
+  # strength (7, 6, 9), so exceedance_count = 0 and p = (1 + 0) / (2 + 1).
+  isTRUE(all.equal(strength_null$exceedance_count, c(0L, 0L, 0L))),
+  isTRUE(all.equal(strength_null$p_value, rep(1 / 3, 3)))
+)
+
+# exclude_self = FALSE keeps the diagonal in: observed becomes
+# node1 = 6+3=9, node2 = 5+3=8, node3 = 3+8=11 (both null matrices already
+# have a zero diagonal, so their null_mean/null_sd are unchanged at 2 and
+# sqrt(8)).
+strength_null_with_self <- strength_null_distribution(
+  observed_counts, null_counts, progress_every = 0L, exclude_self = FALSE
+)
+stopifnot(
+  isTRUE(all.equal(strength_null_with_self$observed_strength, c(9, 8, 11))),
+  isTRUE(all.equal(strength_null_with_self$null_mean, c(2, 2, 2))),
+  isTRUE(all.equal(strength_null_with_self$null_sd, rep(sqrt(8), 3))),
+  isTRUE(all.equal(
+    strength_null_with_self$z_score, c(7, 6, 9) / sqrt(8)
+  )),
+  isTRUE(all.equal(strength_null_with_self$exceedance_count, c(0L, 0L, 0L))),
+  isTRUE(all.equal(strength_null_with_self$p_value, rep(1 / 3, 3)))
+)
+
 message("All statistical utility tests passed")

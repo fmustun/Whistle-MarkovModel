@@ -190,7 +190,25 @@ write.csv(node_table, node_csv, row.names = FALSE)
 message("Saved ", node_csv)
 
 message("Plotting betweenness vs. strength...")
+# Same layout as scripts/02_node_network_measures.R's
+# markov_betweenness_vs_strength_zscore.png: standardized strength
+# (self-transitions included) instead of
+# plot_betweenness_strength_scatter()'s own strength(gra, mode = "all").
+# significance$strength_z_score already
+# holds this - row_sum + col_sum from the shuffle-null permutation test
+# above, which includes self-transitions (see
+# compute_permutation_transition_significance(), R/multiloop_utils.R) -
+# computed directly against the inter-event transition instances this
+# network is built from, so no separate null model is needed here. Indexed
+# by V(gra_interevent)$name (the original whistle_type id, preserved
+# through compute_graph()'s zero-degree-vertex filter), matching how
+# scripts/02 looks up z_score_incl_self by V(gra1)$name. axis_padding
+# widens the plot limits, same as markov_betweenness_vs_strength_zscore.png,
+# so points near the observed extremes aren't sitting right on the frame.
 plot_betweenness_strength_scatter(
   gra_interevent,
-  plot_path("interevent_betweenness_vs_strength", REPO_ROOT, subdir = "multiloops")
+  plot_path("interevent_betweenness_vs_strength", REPO_ROOT, subdir = "multiloops"),
+  strength_values = significance$strength_z_score[as.integer(V(gra_interevent)$name)],
+  strength_label = "standardized strength (z-score vs. shuffle null), self-transitions included",
+  axis_padding = 0.05
 )

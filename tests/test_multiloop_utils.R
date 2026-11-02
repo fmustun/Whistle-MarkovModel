@@ -103,6 +103,17 @@ stopifnot(
   self_repeats$n_self_repeats == 1L
 )
 
+# extract_multiloop_chain_sequences(): one named entry per multi-loop chain
+# (chain_length >= 2), in position order; the singleton recB_2 is excluded.
+chain_sequences <- extract_multiloop_chain_sequences(result)
+
+stopifnot(
+  identical(names(chain_sequences), c("recA_1", "recA_2", "recB_1")),
+  identical(chain_sequences[["recA_1"]], c("SW_Neo_Category_1", "SW_Luna_Category_1")),
+  identical(chain_sequences[["recA_2"]], c("SW_Yosefa_Category_1", "SW_Neo_Category_1")),
+  identical(chain_sequences[["recB_1"]], c("SW_Neo_Category_1", "SW_Neo_Category_1"))
+)
+
 
 # compute_multiloop_type_significance(): the sparse per-observed-edge
 # exceedance counting only exists for performance (see the function's
@@ -134,7 +145,11 @@ result_sparse <- compute_multiloop_type_significance(
 
 set.seed(456)
 observed_probability_sig <- CalcTransitionMatrix(counts_sig)
+observed_node_strength_sig <- rowSums(counts_sig) + colSums(counts_sig)
 exceedance_dense <- matrix(0L, n_nodes_sig, n_nodes_sig)
+strength_sum_dense <- numeric(n_nodes_sig)
+strength_sumsq_dense <- numeric(n_nodes_sig)
+strength_exceedance_dense <- integer(n_nodes_sig)
 for (it in seq_len(200)) {
   shuffled <- sample(chain_node_ids_sig)
   null_counts <- matrix(0L, n_nodes_sig, n_nodes_sig)
@@ -146,6 +161,12 @@ for (it in seq_len(200)) {
   null_probability_sig <- CalcTransitionMatrix(null_counts)
   exceedance_dense <- exceedance_dense +
     (null_probability_sig >= observed_probability_sig)
+
+  node_strength_it <- rowSums(null_counts) + colSums(null_counts)
+  strength_sum_dense <- strength_sum_dense + node_strength_it
+  strength_sumsq_dense <- strength_sumsq_dense + node_strength_it^2
+  strength_exceedance_dense <- strength_exceedance_dense +
+    (node_strength_it >= observed_node_strength_sig)
 }
 p_value_dense <- (1 + exceedance_dense) / 201
 p_value_dense[counts_sig == 0] <- 1
@@ -154,6 +175,69 @@ stopifnot(
   isTRUE(all.equal(result_sparse$p_value_matrix, p_value_dense)),
   all(result_sparse$p_value_matrix[counts_sig == 0] == 1),
   all(result_sparse$p_value_matrix > 0 & result_sparse$p_value_matrix <= 1)
+)
+
+# Node-strength null (self-transitions included, "for free" alongside the
+# edge-level test above) must match the same dense per-iteration
+# computation - same cross-check idea as the p-value comparison above.
+strength_null_mean_dense <- strength_sum_dense / 200
+strength_null_var_dense <- pmax(
+  0, strength_sumsq_dense / 200 - strength_null_mean_dense^2
+) * 200 / 199
+strength_null_sd_dense <- sqrt(strength_null_var_dense)
+strength_z_score_dense <- ifelse(
+  strength_null_sd_dense > 0,
+  (observed_node_strength_sig - strength_null_mean_dense) / strength_null_sd_dense,
+  NA_real_
+)
+strength_p_value_dense <- (1 + strength_exceedance_dense) / 201
+
+stopifnot(
+  isTRUE(all.equal(result_sparse$observed_node_strength, observed_node_strength_sig)),
+  isTRUE(all.equal(result_sparse$strength_null_mean, strength_null_mean_dense)),
+  isTRUE(all.equal(result_sparse$strength_null_sd, strength_null_sd_dense)),
+  isTRUE(all.equal(result_sparse$strength_z_score, strength_z_score_dense)),
+  isTRUE(all.equal(result_sparse$strength_p_value, strength_p_value_dense))
+)
+
+
+# compute_multiloop_type_membership() / compute_type_cooccurrence_pairs() /
+# _triplets(): reuse `result` (the compute_multiloop_chains() fixture
+# output above). Its multi-loop chains (chain_length >= 2) are:
+#  - recA_1: whistle_type 1, 2 (distinct)      -> pair (1, 2)
+#  - recA_2: whistle_type 3, 1 (distinct)      -> pair (1, 3)
+#  - recB_1: whistle_type 1, 1 (same type twice, one distinct type)
+#    -> collapses to a single membership row, ineligible for a pair
+# recB_2 is a singleton (chain_length 1), excluded entirely.
+membership <- compute_multiloop_type_membership(result)
+
+stopifnot(
+  nrow(membership) == 5,
+  identical(membership$chain_id, c(
+    "recA_1", "recA_1", "recA_2", "recA_2", "recB_1"
+  )),
+  identical(membership$whistle_type, c(1, 2, 1, 3, 1))
+)
+
+pairs <- compute_type_cooccurrence_pairs(membership)
+
+stopifnot(
+  nrow(pairs) == 2,
+  setequal(names(pairs), c("type_a", "type_b", "n_chains")),
+  identical(pairs$n_chains, c(1L, 1L)),
+  # recB_1 contributes only one distinct type, so it can never appear in a
+  # pair - every row here comes from recA_1 or recA_2.
+  nrow(merge(pairs, data.frame(type_a = 1, type_b = 2, n_chains = 1L))) == 1,
+  nrow(merge(pairs, data.frame(type_a = 1, type_b = 3, n_chains = 1L))) == 1
+)
+
+# No fixture chain has 3+ distinct types, so the triplet table is empty but
+# still shaped correctly (not NULL, right columns).
+triplets <- compute_type_cooccurrence_triplets(membership)
+
+stopifnot(
+  nrow(triplets) == 0,
+  identical(names(triplets), c("type_a", "type_b", "type_c", "n_chains"))
 )
 
 message("All multi-loop utility tests passed")

@@ -170,6 +170,86 @@ recommended_iterations <- function(m, alpha, margin = 5) {
   as.integer(ceiling(margin * (floor_iterations + 1)))
 }
 
+# Frequency-based null for node strength: total non-self transitions in +
+# out of each node (raw counts, not the row-normalized probabilities used
+# elsewhere), compared against the same quantity computed on each of the
+# shuffle-null count matrices already generated for edge-level significance
+# testing (see MarkovWhistle's null_model = "shuffle", R/markov_whistle.R).
+# That permutation preserves each whistle sub-category's total emission
+# count exactly, so a node's null strength distribution reflects only how
+# much connectivity its own emission frequency predicts by chance - deviation
+# from that (via the returned z_score) is evidence of above/below-chance
+# participation in transitions, independent of which individual transitions
+# later turn out to be BH-significant.
+#
+# Uses raw counts rather than the row-normalized transition_probabilities_
+# matrix because row-normalization forces every node's out-strength to ~1 by
+# construction (each row sums to 1), which would swamp the comparison with a
+# constant, uninformative term.
+#
+# exclude_self = FALSE keeps self-transitions in the sum (diagnostic use:
+# comparing the two reveals how much of a node's below/above-null deviation
+# is driven by self-repetition rather than connections to other nodes).
+strength_null_distribution <- function(
+    transition_counts_matrix, null_count_matrices, progress_every = 20000L,
+    exclude_self = TRUE
+) {
+  if (!is.matrix(transition_counts_matrix) ||
+      nrow(transition_counts_matrix) != ncol(transition_counts_matrix)) {
+    stop("transition_counts_matrix must be a square matrix", call. = FALSE)
+  }
+  n <- nrow(transition_counts_matrix)
+  iterations <- length(null_count_matrices)
+  if (iterations < 2L) {
+    stop("At least two null matrices are required", call. = FALSE)
+  }
+
+  node_strength <- function(m) {
+    if (exclude_self) diag(m) <- 0
+    rowSums(m) + colSums(m)
+  }
+
+  observed_strength <- node_strength(transition_counts_matrix)
+
+  null_sum <- numeric(n)
+  null_sumsq <- numeric(n)
+  exceedance_count <- integer(n)
+  for (iteration in seq_len(iterations)) {
+    s <- node_strength(null_count_matrices[[iteration]])
+    null_sum <- null_sum + s
+    null_sumsq <- null_sumsq + s^2
+    exceedance_count <- exceedance_count + (s >= observed_strength)
+    if (progress_every > 0L &&
+        (iteration %% progress_every == 0L || iteration == iterations)) {
+      message("Null node-strength pass: ", iteration, " / ", iterations)
+    }
+  }
+
+  null_mean <- null_sum / iterations
+  null_var <- pmax(0, null_sumsq / iterations - null_mean^2) *
+    iterations / (iterations - 1)
+  null_sd <- sqrt(null_var)
+  z_score <- ifelse(
+    null_sd > 0, (observed_strength - null_mean) / null_sd, NA_real_
+  )
+  # Same empirical-p formula as empirical_enrichment_p_values() (ties
+  # included, Laplace-smoothed so p is never exactly 0): rank-based, so it
+  # doesn't assume the null is normally distributed the way the z-score
+  # implicitly does - matters for low-count nodes whose null distribution
+  # is visibly discrete/skewed rather than bell-shaped.
+  p_value <- (1 + exceedance_count) / (iterations + 1)
+
+  list(
+    observed_strength = observed_strength,
+    null_mean = null_mean,
+    null_sd = null_sd,
+    z_score = z_score,
+    exceedance_count = exceedance_count,
+    p_value = p_value,
+    iterations = iterations
+  )
+}
+
 select_transition_matrix <- function(observed_probability, adjusted_p,
                                      alpha = 0.05) {
   observed_probability <- name_transition_matrix(observed_probability)

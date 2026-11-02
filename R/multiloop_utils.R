@@ -213,12 +213,84 @@ compute_multiloop_edge_counts <- function(whistle_chains) {
   counts[order(-counts$n), ]
 }
 
+# One row per (chain_id, whistle_type) actually present in a multi-loop
+# chain (chain_length >= 2), collapsing repeated positions of the same type
+# within a chain (e.g. A -> A -> B contributes one A row, one B row) and
+# dropping position/order entirely - the input compute_type_cooccurrence_*
+# below need: "which types ever share a chain", not "which types are
+# adjacent" (that's compute_multiloop_edge_counts()) or "which exact/sorted
+# sequence does a chain spell out" (that's compute_multiloop_patterns()).
+compute_multiloop_type_membership <- function(whistle_chains) {
+  multiloop <- whistle_chains[whistle_chains$chain_length >= 2, ]
+  deduped <- multiloop[!duplicated(multiloop[c("chain_id", "whistle_type")]), ]
+  deduped[
+    order(deduped$chain_id, deduped$whistle_type),
+    c("chain_id", "whistle_type")
+  ]
+}
+
+# Counts, across multi-loop chains, how often every combination of
+# `set_size` distinct whistle_types co-occurs within the same chain -
+# order/position-agnostic (unlike compute_multiloop_edge_counts(), which
+# only counts adjacent pairs). A chain contributes one row per
+# choose(n_distinct_types_in_chain, set_size) combination, e.g. a 3-type
+# chain {A, B, C} contributes the pairs AB, AC, BC when set_size = 2, or the
+# single triplet ABC when set_size = 3; chains with fewer than `set_size`
+# distinct types contribute nothing. Returns one row per observed
+# combination (columns type_1..type_<set_size>, each combination's types
+# sorted ascending for a canonical row) plus n_chains, sorted descending.
+# compute_type_cooccurrence_pairs()/_triplets() below are the set_size = 2/3
+# convenience wrappers actually used by callers.
+compute_type_cooccurrence_sets <- function(membership_df, set_size) {
+  type_col_names <- paste0("type_", seq_len(set_size))
+  by_chain <- split(membership_df$whistle_type, membership_df$chain_id)
+  eligible <- by_chain[lengths(by_chain) >= set_size]
+
+  if (length(eligible) == 0) {
+    empty <- setNames(
+      rep(list(integer(0)), set_size), type_col_names
+    )
+    return(data.frame(empty, n_chains = integer(0)))
+  }
+
+  combo_matrix <- do.call(rbind, lapply(eligible, function(types) {
+    t(combn(sort(unique(types)), set_size))
+  }))
+  colnames(combo_matrix) <- type_col_names
+  combo_df <- as.data.frame(combo_matrix)
+
+  counts <- aggregate(
+    list(n_chains = rep(1L, nrow(combo_df))),
+    by = as.list(combo_df),
+    FUN = sum
+  )
+  counts[order(-counts$n_chains), ]
+}
+
+compute_type_cooccurrence_pairs <- function(membership_df) {
+  out <- compute_type_cooccurrence_sets(membership_df, set_size = 2)
+  names(out)[names(out) %in% c("type_1", "type_2")] <- c("type_a", "type_b")
+  rownames(out) <- NULL
+  out
+}
+
+compute_type_cooccurrence_triplets <- function(membership_df) {
+  out <- compute_type_cooccurrence_sets(membership_df, set_size = 3)
+  names(out)[names(out) %in% c("type_1", "type_2", "type_3")] <-
+    c("type_a", "type_b", "type_c")
+  rownames(out) <- NULL
+  out
+}
+
 # Assigns each multi-loop chain (chain_length >= 2) its sub-category
-# pattern, under two notions of "the same multi-loop": exact sequence
-# (whistle_type_chr in order, e.g. "A -> A -> B") and same composition,
-# any order (sorted whistle_type_chr, e.g. "A + A + B" - so "A -> A -> B"
-# and "A -> B -> A" collapse to the same pattern here). One row per
-# chain_id; singleton chains are excluded.
+# pattern, under three notions of "the same multi-loop": exact sequence
+# (whistle_type_chr in order, e.g. "A -> A -> B"), same composition, any
+# order (sorted whistle_type_chr *with* repeats, e.g. "A + A + B" - so
+# "A -> A -> B" and "A -> B -> A" collapse to the same pattern here, but
+# "A -> B" does not), and same composition ignoring repeat count (sorted
+# *distinct* whistle_type_chr, e.g. "A + B" - so "A -> A -> B" and "A -> B"
+# now collapse together too, since both ever contain exactly {A, B}). One
+# row per chain_id; singleton chains are excluded.
 compute_multiloop_patterns <- function(whistle_chains) {
   multiloop <- whistle_chains[whistle_chains$chain_length >= 2, ]
   ordered <- multiloop[
@@ -232,12 +304,31 @@ compute_multiloop_patterns <- function(whistle_chains) {
     ordered$whistle_type_chr, ordered$chain_id,
     function(x) paste(sort(x), collapse = " + ")
   )
+  composition_pattern <- tapply(
+    ordered$whistle_type_chr, ordered$chain_id,
+    function(x) paste(sort(unique(x)), collapse = " + ")
+  )
   data.frame(
     chain_id = names(ordered_pattern),
     ordered_pattern = as.character(ordered_pattern),
     unordered_pattern = as.character(unordered_pattern[names(ordered_pattern)]),
+    composition_pattern = as.character(composition_pattern[names(ordered_pattern)]),
     stringsAsFactors = FALSE
   )
+}
+
+# Ordered whistle_type_chr sequence for every multi-loop chain (chain_length
+# >= 2), as a named list (chain_id -> character vector, in position_in_chain
+# order) - the raw ordered material behind compute_multiloop_patterns()'s
+# collapsed ordered_pattern string, needed wherever a caller wants the
+# sequence itself rather than a joined string (e.g. the chain-alignment
+# composition clustering in R/chain_clustering_utils.R).
+extract_multiloop_chain_sequences <- function(whistle_chains) {
+  multiloop <- whistle_chains[whistle_chains$chain_length >= 2, ]
+  ordered <- multiloop[
+    order(multiloop$chain_id, multiloop$position_in_chain),
+  ]
+  split(ordered$whistle_type_chr, ordered$chain_id)
 }
 
 # Empirical enrichment significance test shared by the multi-loop *type*
@@ -274,6 +365,18 @@ compute_multiloop_patterns <- function(whistle_chains) {
 # from_idx / to_idx: equal-length integer indices into `labels` - transition
 #   instance k pairs labels[from_idx[k]] -> labels[to_idx[k]]. Fixed across
 #   iterations; only `labels` is permuted.
+#
+# Alongside the edge-level test above, each iteration's row_sum (already
+# computed for null_probability) plus a matching col_sum give each node's
+# total in + out transition count for that iteration for free - the same
+# node-strength null strength_null_distribution() (R/statistical_utils.R)
+# builds from saved whistle-level null count matrices, but computed here
+# from the label permutation directly since this caller (scripts/21) has no
+# saved per-iteration count matrices to build a dense n_nodes x n_nodes
+# matrix from. Self-transitions are included (row_sum/col_sum both count a
+# from==to pair), matching strength_null_distribution(exclude_self = FALSE)
+# - the "including self-transitions" strength already used for the
+# whistle-level z-score plot (scripts/02).
 compute_permutation_transition_significance <- function(
     labels, from_idx, to_idx, n_nodes, transition_counts_matrix,
     iterations, progress_every = 5000L
@@ -284,8 +387,13 @@ compute_permutation_transition_significance <- function(
   observed_key <- from_node_id + (to_node_id - 1L) * n_nodes
   observed_probability_matrix <- CalcTransitionMatrix(transition_counts_matrix)
   observed_probability <- observed_probability_matrix[observed_edges]
+  observed_node_strength <- rowSums(transition_counts_matrix) +
+    colSums(transition_counts_matrix)
 
   exceedance_count <- integer(length(observed_key))
+  strength_sum <- numeric(n_nodes)
+  strength_sumsq <- numeric(n_nodes)
+  strength_exceedance_count <- integer(n_nodes)
 
   for (iteration in seq_len(iterations)) {
     shuffled_labels <- sample(labels)
@@ -293,6 +401,7 @@ compute_permutation_transition_significance <- function(
     to_node <- shuffled_labels[to_idx]
 
     row_sum <- tabulate(from_node, nbins = n_nodes)
+    col_sum <- tabulate(to_node, nbins = n_nodes)
     cell_count <- tabulate(
       match(from_node + (to_node - 1L) * n_nodes, observed_key),
       nbins = length(observed_key)
@@ -302,6 +411,12 @@ compute_permutation_transition_significance <- function(
     )
     exceedance_count <- exceedance_count +
       (null_probability >= observed_probability)
+
+    node_strength_iteration <- row_sum + col_sum
+    strength_sum <- strength_sum + node_strength_iteration
+    strength_sumsq <- strength_sumsq + node_strength_iteration^2
+    strength_exceedance_count <- strength_exceedance_count +
+      (node_strength_iteration >= observed_node_strength)
 
     if (progress_every > 0L &&
         (iteration %% progress_every == 0L || iteration == iterations)) {
@@ -316,11 +431,28 @@ compute_permutation_transition_significance <- function(
   exceedance_count_matrix <- matrix(0L, n_nodes, n_nodes)
   exceedance_count_matrix[observed_edges] <- exceedance_count
 
+  strength_null_mean <- strength_sum / iterations
+  strength_null_var <- pmax(0, strength_sumsq / iterations - strength_null_mean^2) *
+    iterations / (iterations - 1)
+  strength_null_sd <- sqrt(strength_null_var)
+  strength_z_score <- ifelse(
+    strength_null_sd > 0,
+    (observed_node_strength - strength_null_mean) / strength_null_sd,
+    NA_real_
+  )
+  strength_p_value <- (1 + strength_exceedance_count) / (iterations + 1)
+
   list(
     p_value_matrix = p_value_matrix,
     exceedance_count_matrix = exceedance_count_matrix,
     observed_probability_matrix = observed_probability_matrix,
-    iterations = iterations
+    iterations = iterations,
+    observed_node_strength = observed_node_strength,
+    strength_null_mean = strength_null_mean,
+    strength_null_sd = strength_null_sd,
+    strength_z_score = strength_z_score,
+    strength_exceedance_count = strength_exceedance_count,
+    strength_p_value = strength_p_value
   )
 }
 
