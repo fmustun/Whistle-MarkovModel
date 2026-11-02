@@ -33,15 +33,14 @@ GRAPH_ALPHA <- 0.05
 # of transitions observed at least once - see a prior run's
 # outputs/bh_analysis/bh_analysis_summary.txt, or
 # sum(MarkovModel$transition_probabilities_matrix_all > 0)). For this
-# dataset m ~= 1214, so recommended_iterations(1214, 0.05, margin = 5) ~=
-# 121,400. 1000 below is a fast default for development iteration, not a
-# statistically powered run.
+# dataset m = 1214, so recommended_iterations(1214, 0.05, margin = 5) ~=
+# 121,400; the manuscript run uses 150,000. Lower it (e.g. 1000) only for
+# quick development runs - those are not statistically powered.
 ITERATIONS <- 150000L
 SEED <- 0L
 MIN_SHIFT <- 0
 MAX_SHIFT <- 1500
 THRESHOLD <- 2
-NULL_NETWORK_ITERATIONS <- 1000L
 PLOT_SEED <- 42L
 
 # Inter-whistle interval threshold (seconds) for grouping consecutive
@@ -50,8 +49,8 @@ MULTILOOP_IWI_THRESHOLD <- 0.25
 
 # Ordered-categorical clustering of multi-loop chain compositions
 # (cluster_multiloop_chains(), R/chain_clustering_utils.R) - shared here
-# rather than pinned locally in any one script, since both scripts/20's
-# sub-clustering and scripts/21's cluster-level transition network need
+# rather than pinned locally in any one script, since both scripts/09's
+# sub-clustering and scripts/10's cluster-level transition network need
 # identical parameters to stay consistent with each other.
 #
 # EPSILON/CROSS_CATEGORY_COST are user-specified starting points, not
@@ -69,8 +68,8 @@ MULTILOOP_CLUSTER_LINKAGE <- "average"
 MULTILOOP_CLUSTER_K_RANGE <- 5:40
 
 # Leiden community detection (scripts/03, scripts/03b). COMMUNITY_RESOLUTION
-# is the single resolution_parameter used for the main community_detection
-# figure - shared here (rather than pinned locally in scripts/03) so
+# is the single resolution_parameter used for the community detection
+# (Fig. 5a) - shared here (rather than pinned locally in scripts/03) so
 # scripts/03b's resolution sweep can mark it on its plots and stay in sync.
 # 0.5 was chosen from scripts/03b's sweep output
 # (outputs/leiden_resolution_sweep.csv), not picked a priori: the

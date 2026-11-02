@@ -1,10 +1,13 @@
 #!/usr/bin/env Rscript
+#
+# Manuscript Fig. 5a and Methods 4.9: Leiden community detection on the
+# significant network (modularity) and per-community / per-category
+# compactness (mean within-group over mean between-group transition
+# probability).
 
 suppressPackageStartupMessages({
   library(igraph)
-  library(ggplot2)
   library(scales)
-  library(tnet)
 })
 
 args <- commandArgs(trailingOnly = FALSE)
@@ -24,7 +27,6 @@ source(file.path(REPO_ROOT, "R", "graph_utils.R"))
 source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
 ensure_plots_dir(REPO_ROOT)
-ensure_plots_dir(REPO_ROOT, "network_measures")
 
 rds_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")
 if (!file.exists(rds_path)) {
@@ -36,61 +38,6 @@ gra1 <- saved$gra1
 MarkovModel <- saved$MarkovModel
 
 register_fcircle_shape()
-
-message("Generating ", NULL_NETWORK_ITERATIONS, " degree-preserving random networks...")
-netObs <- cbind(get.edgelist(gra1, names = FALSE), E(gra1)$weight)
-
-rdm_path_length <- rep(NA_real_, NULL_NETWORK_ITERATIONS)
-rdm_clustering_coefficients <- rep(NA_real_, NULL_NETWORK_ITERATIONS)
-rdm_diameter <- rep(NA_real_, NULL_NETWORK_ITERATIONS)
-rdm_reciprocity <- rep(NA_real_, NULL_NETWORK_ITERATIONS)
-rdm_nb_community <- rep(NA_real_, NULL_NETWORK_ITERATIONS)
-rdm_modularity <- rep(NA_real_, NULL_NETWORK_ITERATIONS)
-
-for (i in seq_len(NULL_NETWORK_ITERATIONS)) {
-  netRdm <- rg_reshuffling_w(netObs, option = "links", directed = TRUE, seed = i)
-  netRdm <- tnet_igraph(netRdm)
-  rdm_clustering_coefficients[[i]] <- transitivity(netRdm, type = "global")
-  rdm_path_length[[i]] <- mean_distance(netRdm)
-  rdm_diameter[[i]] <- diameter(netRdm)
-  rdm_reciprocity[[i]] <- reciprocity(netRdm)
-  cl_rdm <- cluster_louvain(as.undirected(netRdm))
-  rdm_nb_community[i] <- length(cl_rdm)
-  rdm_modularity[i] <- modularity(cl_rdm)
-}
-
-obs_clustering_coefficients <- transitivity(gra1, type = "global")
-
-aclust <- rdm_clustering_coefficients[rdm_clustering_coefficients > obs_clustering_coefficients]
-p1clust <- length(aclust) / length(rdm_clustering_coefficients)
-bclust <- rdm_clustering_coefficients[rdm_clustering_coefficients < obs_clustering_coefficients]
-p0clust <- length(bclust) / length(rdm_clustering_coefficients)
-p2clust <- 2 * min(p0clust, p1clust)
-
-mean_CCrd <- mean(rdm_clustering_coefficients)
-sd_CCrd <- sd(rdm_clustering_coefficients)
-Z_score_CC <- (obs_clustering_coefficients - mean_CCrd) / sd_CCrd
-
-save_ggplot(
-  ggplot(data = data.frame(rdm_clustering_coefficients), aes(x = rdm_clustering_coefficients)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 100, fill = "gray", position = "identity", linewidth = 0.8) +
-    geom_vline(aes(xintercept = obs_clustering_coefficients, color = "Observed"), linewidth = 0.6) +
-    labs(
-      title = "Distribution of clustering coefficients on random networks",
-      caption = sprintf("P-value = %.2f. Z-score = %.3f.", p2clust, Z_score_CC),
-      x = "clustering coefficient",
-      color = "Legend"
-    ),
-  "random_network_clustering_distribution",
-  REPO_ROOT,
-  width = 9,
-  height = 6,
-  subdir = "network_measures"
-)
-
-SWC <- (transitivity(gra1, type = "global") / mean(rdm_clustering_coefficients)) /
-  (mean_distance(gra1) / mean(rdm_path_length))
-message(sprintf("Small-world coefficient: %.4f", SWC))
 
 gra1_undirected <- as.undirected(gra1)
 set.seed(PLOT_SEED)
@@ -162,8 +109,9 @@ message(sprintf("Modularity: %.4f", cl_modularity))
 # transition counts once, regardless of how many times it was actually
 # observed) and count-weighted (weighted by each edge's observation count,
 # so a probability backed by many observations moves the mean more than one
-# backed by few) side by side, since it isn't settled yet which of the two
-# is the intended definition.
+# backed by few) side by side. The values quoted in the manuscript (SW_Luna
+# 6.65, SW_Neo 4.00, SW_Nana 2.04, SW_Nikita 1.91, SW_Yosefa 2.38) are the
+# count-weighted, per-main-category ones (category_compactness.csv).
 bh_network_rds <- file.path(REPO_ROOT, OUTPUT_DIR, "bh_analysis", "bh_corrected_network.rds")
 if (!file.exists(bh_network_rds)) {
   stop("Run scripts/01_run_markov_model.R first. Missing: ", bh_network_rds, call. = FALSE)
@@ -237,21 +185,14 @@ with_pdf_plot(
   }
 )
 
-out_path <- file.path(REPO_ROOT, OUTPUT_DIR, "global_null_metrics.rds")
+out_path <- file.path(REPO_ROOT, OUTPUT_DIR, "community_detection.rds")
 saveRDS(
   list(
-    rdm_clustering_coefficients = rdm_clustering_coefficients,
-    rdm_path_length = rdm_path_length,
-    rdm_diameter = rdm_diameter,
-    rdm_reciprocity = rdm_reciprocity,
-    rdm_nb_community = rdm_nb_community,
-    rdm_modularity = rdm_modularity,
-    obs_clustering_coefficients = obs_clustering_coefficients,
-    p2clust = p2clust,
-    Z_score_CC = Z_score_CC,
-    small_world_coefficient = SWC,
+    resolution = COMMUNITY_RESOLUTION,
+    membership = setNames(membership(cl), V(gra1)$name),
     community_modularity = cl_modularity,
-    community_compactness = community_compactness_table
+    community_compactness = community_compactness_table,
+    category_compactness = category_compactness_table
   ),
   out_path
 )

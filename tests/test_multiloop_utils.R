@@ -201,13 +201,13 @@ stopifnot(
 )
 
 
-# compute_multiloop_type_membership() / compute_type_cooccurrence_pairs() /
-# _triplets(): reuse `result` (the compute_multiloop_chains() fixture
-# output above). Its multi-loop chains (chain_length >= 2) are:
-#  - recA_1: whistle_type 1, 2 (distinct)      -> pair (1, 2)
-#  - recA_2: whistle_type 3, 1 (distinct)      -> pair (1, 3)
+# compute_multiloop_type_membership(): reuse `result` (the
+# compute_multiloop_chains() fixture output above). Its multi-loop chains
+# (chain_length >= 2) are:
+#  - recA_1: whistle_type 1, 2 (distinct)
+#  - recA_2: whistle_type 3, 1 (distinct)
 #  - recB_1: whistle_type 1, 1 (same type twice, one distinct type)
-#    -> collapses to a single membership row, ineligible for a pair
+#    -> collapses to a single membership row
 # recB_2 is a singleton (chain_length 1), excluded entirely.
 membership <- compute_multiloop_type_membership(result)
 
@@ -217,27 +217,6 @@ stopifnot(
     "recA_1", "recA_1", "recA_2", "recA_2", "recB_1"
   )),
   identical(membership$whistle_type, c(1, 2, 1, 3, 1))
-)
-
-pairs <- compute_type_cooccurrence_pairs(membership)
-
-stopifnot(
-  nrow(pairs) == 2,
-  setequal(names(pairs), c("type_a", "type_b", "n_chains")),
-  identical(pairs$n_chains, c(1L, 1L)),
-  # recB_1 contributes only one distinct type, so it can never appear in a
-  # pair - every row here comes from recA_1 or recA_2.
-  nrow(merge(pairs, data.frame(type_a = 1, type_b = 2, n_chains = 1L))) == 1,
-  nrow(merge(pairs, data.frame(type_a = 1, type_b = 3, n_chains = 1L))) == 1
-)
-
-# No fixture chain has 3+ distinct types, so the triplet table is empty but
-# still shaped correctly (not NULL, right columns).
-triplets <- compute_type_cooccurrence_triplets(membership)
-
-stopifnot(
-  nrow(triplets) == 0,
-  identical(names(triplets), c("type_a", "type_b", "type_c", "n_chains"))
 )
 
 message("All multi-loop utility tests passed")

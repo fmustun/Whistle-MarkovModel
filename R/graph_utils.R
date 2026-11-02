@@ -108,62 +108,6 @@ compute_graph <- function(
   Gra
 }
 
-compute_graph_p_value_significant <- function(
-    p_value,
-    Markov_Model,
-    Whistles_List,
-    sub_division = TRUE,
-    sub_network = NULL,
-    list_names = LIST_NAMES
-) {
-  seq_category <- build_seq_category(Whistles_List, list_names)
-
-  if (!is.null(sub_network)) {
-    subv <- seq_category[[sub_network]]
-    num_cat <- max(unique(Whistles_List$whistle_type))
-    transition_probabilities_matrix_p_value <- matrix(0, num_cat, num_cat)
-    transition_probabilities_matrix_p_value[subv, ] <-
-      Markov_Model$transition_probabilities_matrix_all[subv, ]
-    transition_probabilities_matrix_p_value[, subv] <-
-      Markov_Model$transition_probabilities_matrix_all[, subv]
-    transition_probabilities_matrix_p_value[
-      Markov_Model$p_value_matrix >= p_value
-    ] <- 0
-  } else {
-    transition_probabilities_matrix_p_value <-
-      Markov_Model$transition_probabilities_matrix_all
-    transition_probabilities_matrix_p_value[
-      Markov_Model$p_value_matrix >= p_value
-    ] <- 0
-  }
-
-  edges_p_value <- c()
-  for (i in seq_len(dim(transition_probabilities_matrix_p_value)[1])) {
-    v_tmp <- Markov_Model$inv_p_value_matrix[i, ][
-      transition_probabilities_matrix_p_value[i, ] > 0
-    ]
-    edges_p_value <- c(edges_p_value, v_tmp)
-  }
-
-  Gra <- compute_graph(
-    transition_probabilities_matrix_p_value,
-    Markov_Model = Markov_Model,
-    Whistles_List = Whistles_List,
-    sub_division = sub_division,
-    list_names = list_names
-  )
-  Gra <- set_edge_attr(Gra, "inv_p_value", index = E(Gra), edges_p_value)
-
-  v.frame <- ifelse(
-    V(Gra)$name %in% which(diag(transition_probabilities_matrix_p_value) > 0),
-    "black", "gray"
-  )
-  Gra <- set_vertex_attr(Gra, "vertex.frame.col", index = V(Gra), v.frame)
-  Gra <- delete.edges(Gra, which(which_loop(Gra)))
-
-  Gra
-}
-
 compute_graph_from_selection <- function(
     transition_matrix,
     selection_values,
@@ -284,9 +228,10 @@ reweight_graph_from_null_counts <- function(gra_template, null_counts_matrix) {
 # likely, on average, to transition to another node in the same group than
 # to leave it; below 1 means the reverse. `group` is
 # deliberately generic - the grouping doesn't have to be a detected
-# community: scripts/03 uses this both for Leiden's communities and for the
-# main whistle category (V(gra1)$category), and those two groupings need
-# not agree on how compact any given node's group is.
+# community: scripts/03_community_detection.R uses this both for Leiden's
+# communities and for the main whistle category (V(gra1)$category), and
+# those two groupings need not agree on how compact any given node's group
+# is.
 #
 # Takes `gra`'s edges as-is (each weight used directly, no aggregation
 # across direction) - pass the *directed* significant-transition graph
@@ -475,7 +420,7 @@ plot_markov_graph <- function(
     # above, which only restyle whatever plot.igraph's own default label -
     # V(gra)$name - already is). NULL (default) reproduces that default
     # exactly. A caller mixing more than one node universe with different
-    # numbering schemes (e.g. scripts/21's whistle sub-categories, which
+    # numbering schemes (e.g. scripts/10's whistle sub-categories, which
     # keep their whistle_type id from the original per-whistle-type network,
     # alongside multi-loop cluster nodes numbered to continue right after)
     # can pass the display numbers here without renumbering V(gra)$name
@@ -484,7 +429,7 @@ plot_markov_graph <- function(
     vertex_label = NULL,
     # Per-vertex circle size / border width override (same NULL-preserves-
     # prior-behavior convention as vertex_label_color/_font above) - e.g. so
-    # script 17 can draw its multi-loop-cluster nodes larger and
+    # scripts/10 can draw its multi-loop-cluster nodes larger and
     # thicker-bordered than the standalone-whistle nodes they share a plot
     # with, without changing vertex.frame.color's existing meaning
     # (significant self-transition). NULL reproduces the original constants
@@ -525,7 +470,7 @@ plot_markov_graph <- function(
   # Every existing caller uses either show_legend or caption, never both, so
   # the two single-element branches below are unchanged from before; the
   # combined branch is additive room for the legend row on top of the
-  # caption's own lines, for a caller (script 11) that wants both at once.
+  # caption's own lines, for a caller that wants both at once.
   bottom_margin <- if (show_legend && !is.null(caption)) {
     3 + length(caption) * 1.3
   } else if (show_legend) {
@@ -774,7 +719,7 @@ plot_betweenness_strength_scatter <- function(
     # Per-vertex point size / border width override, same NULL-preserves-
     # prior-behavior convention (see plot_markov_graph()'s vertex_size/
     # vertex_frame_width) - lets a caller mixing more than one kind of node
-    # (script 17) make one kind's points visibly bigger/heavier-bordered
+    # (scripts/10) make one kind's points visibly bigger/heavier-bordered
     # than the other. NULL reproduces the original constants (cex = 1.6,
     # point border lwd = 1) for every other caller.
     vertex_cex = NULL, vertex_lwd = NULL,
@@ -799,7 +744,7 @@ plot_betweenness_strength_scatter <- function(
     # Multiplier applied to every text element's cex (axis titles, axis tick
     # labels, outlier point labels, caption) - 1 (default) reproduces every
     # existing caller's sizing exactly; a caller preparing a figure for a
-    # smaller reproduction (e.g. scripts/03c's composite) can bump this up
+    # smaller reproduction (e.g. Fig. 5c) can bump this up
     # without touching point/marker size (vertex_cex/vertex_lwd above are
     # separate).
     text_cex = 1,

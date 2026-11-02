@@ -76,8 +76,8 @@ uniform_sweep <- leiden_resolution_sweep(
 )
 stopifnot(!isTRUE(all.equal(uniform_sweep$modularity, sweep$modularity[2])))
 
-# Guards the gotcha that caused a real bug in scripts/03_global_network_
-# measures.R: unlike cluster_leiden()/cluster_louvain(), plain modularity()
+# Guards the gotcha that caused a real bug in scripts/03_community_
+# detection.R: unlike cluster_leiden()/cluster_louvain(), plain modularity()
 # does NOT fall back to the graph's own "weight" edge attribute when
 # `weights` is omitted - it silently computes *unweighted* modularity
 # instead. leiden_resolution_sweep() must always pass weights explicitly, so

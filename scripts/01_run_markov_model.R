@@ -1,4 +1,9 @@
 #!/usr/bin/env Rscript
+#
+# Manuscript Fig. 4 (Methods 4.7-4.8): first-order Markov model of whistle
+# sub-category transitions, shuffle-null empirical p-values, BH correction
+# over the observed transitions, and the significant-transition network.
+# Saves outputs/markov_model.rds, which every later script reads.
 
 suppressPackageStartupMessages({
   library(igraph)
@@ -100,12 +105,6 @@ with_pdf_plot(
   plot_markov_graph(
     gra1, list_names = LIST_NAMES, seed = PLOT_SEED, show_legend = FALSE
   )
-)
-
-message("Plotting betweenness vs. strength...")
-plot_betweenness_strength_scatter(
-  gra1,
-  plot_path("markov_betweenness_vs_strength", REPO_ROOT)
 )
 
 out_path <- file.path(REPO_ROOT, OUTPUT_DIR, "markov_model.rds")

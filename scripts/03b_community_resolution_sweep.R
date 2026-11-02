@@ -1,7 +1,10 @@
 #!/usr/bin/env Rscript
 #
+# Provenance of COMMUNITY_RESOLUTION (R/config.R) used for Fig. 5a; the
+# sweep itself is not reported in the manuscript.
+#
 # Leiden community-detection resolution sweep for the network built in
-# scripts/03_global_network_measures.R: scans COMMUNITY_RESOLUTION_RANGE
+# scripts/03_community_detection.R: scans COMMUNITY_RESOLUTION_RANGE
 # (R/config.R) looking for a plateau in community count / modularity, and
 # benchmarks the observed network's modularity at each resolution against
 # a subsample of the shuffle-null count matrices already generated for the
@@ -91,10 +94,9 @@ for (k in seq_along(null_indices)) {
   }
 }
 
-# Two-tailed empirical p, same construction as p2clust earlier in
-# scripts/03_global_network_measures.R (2 * min(one-tailed p in each
-# direction)) - real modularity can plausibly land in *either* tail: below
-# the null (a coarser/less-modular partition than random reweighting would
+# Two-tailed empirical p (2 * min(one-tailed p in each direction)) - real
+# modularity can plausibly land in *either* tail: below the null (a
+# coarser/less-modular partition than random reweighting would
 # give, seen at low resolution) as well as above it (seen at high
 # resolution), and a one-tailed "is observed higher" test would report the
 # below-null case as merely non-significant (p near 1) rather than flagging

@@ -1,5 +1,5 @@
 # Ordered-categorical distance machinery for multi-loop chain composition
-# clustering (scripts/20, scripts/21): a substitution-cost matrix over whistle
+# clustering (scripts/09, scripts/10): a substitution-cost matrix over whistle
 # sub-categories (whistle_type_chr) that makes same-main-category swaps
 # cheap and cross-category swaps expensive, plus a Needleman-Wunsch global
 # alignment distance built on top of it. Kept separate from
@@ -305,8 +305,8 @@ align_and_cluster_chains <- function(
 # dedupe identical chains (carrying counts), pairwise NW-alignment distance
 # over the distinct compositions, hierarchical clustering, and k chosen by
 # max mean silhouette width over k_range. One shared implementation so every
-# caller building on these clusters (scripts/20's sub-clustering,
-# scripts/21's cluster-level transition network) gets identical,
+# caller building on these clusters (scripts/09's sub-clustering,
+# scripts/10's cluster-level transition network) gets identical,
 # reproducible assignments from the same parameters, rather than re-deriving
 # the pipeline (and risking drift from R/config.R's own MULTILOOP_CLUSTER_
 # EPSILON/GAP_PENALTY/K_RANGE) by hand. Deterministic - no seed needed -

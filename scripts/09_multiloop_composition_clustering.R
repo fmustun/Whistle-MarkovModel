@@ -1,5 +1,9 @@
 #!/usr/bin/env Rscript
 
+# Manuscript section 2.5 / Methods 4.10: classification of multi-loop chains
+# by sub-category composition (9 clusters, 5 of them split into 25
+# sub-clusters).
+#
 # Sub-clusters five of the k = 9 top-level composition clusters (cut from
 # the same substitution-cost/alignment tree cluster_multiloop_chains()
 # builds from MULTILOOP_CLUSTER_EPSILON/CROSS_CATEGORY_COST/GAP_PENALTY/
@@ -28,10 +32,10 @@
 # the SAME tree again at the MDL-chosen k (force_k) - or leave it unsplit if
 # MDL's own choice is k = 1.
 #
-# Stops at sub-cluster assignments + diagnostics - scripts/21 (the combined
+# Stops at sub-cluster assignments + diagnostics - scripts/10 (the combined
 # whistle/cluster/sub-cluster transition network) reads this script's own
 # multiloop_subcluster_mdl_chain_assignments.csv output, so re-running this
-# script and then scripts/21 keeps both in sync.
+# script and then scripts/10 keeps both in sync.
 
 suppressPackageStartupMessages({
   library(cluster)
@@ -54,9 +58,7 @@ source(file.path(REPO_ROOT, "R", "load_whistles.R"))
 source(file.path(REPO_ROOT, "R", "graph_utils.R"))
 source(file.path(REPO_ROOT, "R", "multiloop_utils.R"))
 source(file.path(REPO_ROOT, "R", "chain_clustering_utils.R"))
-source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
-ensure_plots_dir(REPO_ROOT, "multiloops")
 multiloop_dir <- file.path(REPO_ROOT, OUTPUT_DIR, "multiloop_analysis")
 dir.create(multiloop_dir, recursive = TRUE, showWarnings = FALSE)
 

@@ -89,7 +89,8 @@ summarize_multiloop_chains <- function(whistle_level_df) {
 # assigned fresh here so it's correct regardless of whistles_list's own row
 # names) - so a caller can look a transition instance's whistle_type back up
 # under a permutation of whistles_list$whistle_type (see
-# compute_permutation_transition_significance(), used by scripts/08).
+# compute_permutation_transition_significance(), used by
+# scripts/08_standalone_network.R).
 compute_markov_transition_multiloop_overlap <- function(
     whistles_list,
     time_window = TIME_WINDOW,
@@ -181,45 +182,12 @@ compute_self_repeat_counts <- function(whistle_chains) {
   )
 }
 
-# Counts adjacent *different*-whistle_type pairs within multi-loop chains -
-# the counterpart to compute_self_repeat_counts(), which handles same-type
-# adjacent pairs. Used to build a transition graph made only of multi-loop
-# -internal edges (as opposed to the Markov model's wide-TIME_WINDOW
-# transitions). One row per observed (from, to) pair, sorted by descending
-# count.
-compute_multiloop_edge_counts <- function(whistle_chains) {
-  ordered <- whistle_chains[
-    order(whistle_chains$chain_id, whistle_chains$position_in_chain),
-  ]
-  n <- nrow(ordered)
-  same_chain_next <- ordered$chain_id[-n] == ordered$chain_id[-1]
-  from_type <- ordered$whistle_type[-n][same_chain_next]
-  to_type <- ordered$whistle_type[-1][same_chain_next]
-  is_diff <- from_type != to_type
-  from_type <- from_type[is_diff]
-  to_type <- to_type[is_diff]
-
-  if (length(from_type) == 0) {
-    return(data.frame(
-      from_whistle_type = integer(0), to_whistle_type = integer(0),
-      n = integer(0)
-    ))
-  }
-  counts <- aggregate(
-    list(n = rep(1L, length(from_type))),
-    by = list(from_whistle_type = from_type, to_whistle_type = to_type),
-    FUN = sum
-  )
-  counts[order(-counts$n), ]
-}
-
 # One row per (chain_id, whistle_type) actually present in a multi-loop
 # chain (chain_length >= 2), collapsing repeated positions of the same type
 # within a chain (e.g. A -> A -> B contributes one A row, one B row) and
-# dropping position/order entirely - the input compute_type_cooccurrence_*
-# below need: "which types ever share a chain", not "which types are
-# adjacent" (that's compute_multiloop_edge_counts()) or "which exact/sorted
-# sequence does a chain spell out" (that's compute_multiloop_patterns()).
+# dropping position/order entirely: "which types ever share a chain", not
+# "which exact/sorted sequence does a chain spell out" (that's
+# compute_multiloop_patterns()).
 compute_multiloop_type_membership <- function(whistle_chains) {
   multiloop <- whistle_chains[whistle_chains$chain_length >= 2, ]
   deduped <- multiloop[!duplicated(multiloop[c("chain_id", "whistle_type")]), ]
@@ -227,59 +195,6 @@ compute_multiloop_type_membership <- function(whistle_chains) {
     order(deduped$chain_id, deduped$whistle_type),
     c("chain_id", "whistle_type")
   ]
-}
-
-# Counts, across multi-loop chains, how often every combination of
-# `set_size` distinct whistle_types co-occurs within the same chain -
-# order/position-agnostic (unlike compute_multiloop_edge_counts(), which
-# only counts adjacent pairs). A chain contributes one row per
-# choose(n_distinct_types_in_chain, set_size) combination, e.g. a 3-type
-# chain {A, B, C} contributes the pairs AB, AC, BC when set_size = 2, or the
-# single triplet ABC when set_size = 3; chains with fewer than `set_size`
-# distinct types contribute nothing. Returns one row per observed
-# combination (columns type_1..type_<set_size>, each combination's types
-# sorted ascending for a canonical row) plus n_chains, sorted descending.
-# compute_type_cooccurrence_pairs()/_triplets() below are the set_size = 2/3
-# convenience wrappers actually used by callers.
-compute_type_cooccurrence_sets <- function(membership_df, set_size) {
-  type_col_names <- paste0("type_", seq_len(set_size))
-  by_chain <- split(membership_df$whistle_type, membership_df$chain_id)
-  eligible <- by_chain[lengths(by_chain) >= set_size]
-
-  if (length(eligible) == 0) {
-    empty <- setNames(
-      rep(list(integer(0)), set_size), type_col_names
-    )
-    return(data.frame(empty, n_chains = integer(0)))
-  }
-
-  combo_matrix <- do.call(rbind, lapply(eligible, function(types) {
-    t(combn(sort(unique(types)), set_size))
-  }))
-  colnames(combo_matrix) <- type_col_names
-  combo_df <- as.data.frame(combo_matrix)
-
-  counts <- aggregate(
-    list(n_chains = rep(1L, nrow(combo_df))),
-    by = as.list(combo_df),
-    FUN = sum
-  )
-  counts[order(-counts$n_chains), ]
-}
-
-compute_type_cooccurrence_pairs <- function(membership_df) {
-  out <- compute_type_cooccurrence_sets(membership_df, set_size = 2)
-  names(out)[names(out) %in% c("type_1", "type_2")] <- c("type_a", "type_b")
-  rownames(out) <- NULL
-  out
-}
-
-compute_type_cooccurrence_triplets <- function(membership_df) {
-  out <- compute_type_cooccurrence_sets(membership_df, set_size = 3)
-  names(out)[names(out) %in% c("type_1", "type_2", "type_3")] <-
-    c("type_a", "type_b", "type_c")
-  rownames(out) <- NULL
-  out
 }
 
 # Assigns each multi-loop chain (chain_length >= 2) its sub-category
@@ -331,20 +246,18 @@ extract_multiloop_chain_sequences <- function(whistle_chains) {
   split(ordered$whistle_type_chr, ordered$chain_id)
 }
 
-# Empirical enrichment significance test shared by the multi-loop *type*
-# network (scripts/07) and the multi-loop-only whistle-level network
-# (scripts/08) - the same "shuffle" null model + empirical-p + BH-correction
-# idea script 01 uses for the full whistle-level network (MarkovWhistle() in
-# R/markov_whistle.R, empirical_enrichment_p_values()/adjust_transition_p_values()
-# in R/statistical_utils.R), but computed directly at the handful of cells
-# that can ever matter instead of full n_nodes x n_nodes matrices. Both
-# callers have far more possible nodes than observed edges (630 multi-loop
-# types vs. ~300 observed edges in script 07; even the 86-node whistle-level
-# case in script 08 isn't huge, but the same restriction is exact and free,
-# so there's no reason not to reuse it) - a dense n_nodes^2 matrix per null
-# iteration would be mostly zero and, at the iteration counts BH correction
-# needs (tens of thousands), unnecessary memory/compute to build and hold
-# per iteration. Since adjust_transition_p_values' family_mask already
+# Empirical enrichment significance test shared by the stand-alone whistle
+# network (scripts/08_standalone_network.R) and the multi-loop composition
+# network (scripts/10_multiloop_composition_network.R) - the same "shuffle"
+# null model + empirical-p + BH-correction idea script 01 uses for the full
+# whistle-level network (MarkovWhistle() in R/markov_whistle.R,
+# empirical_enrichment_p_values()/adjust_transition_p_values() in
+# R/statistical_utils.R), but computed directly at the handful of cells
+# that can ever matter instead of full n_nodes x n_nodes matrices - a dense
+# n_nodes^2 matrix per null iteration would be mostly zero and, at the
+# iteration counts BH correction needs (tens of thousands), unnecessary
+# memory/compute to build and hold per iteration. Since
+# adjust_transition_p_values' family_mask already
 # restricts the multiple-testing family - and therefore which cells can
 # ever end up significant - to cells where transition_counts_matrix > 0,
 # only those cells need a p-value at all; every other cell is forced to
@@ -359,9 +272,9 @@ extract_multiloop_chain_sequences <- function(whistle_chains) {
 # of observed edges - no need to rebuild timing structure per iteration the
 # way MarkovWhistle() rebuilds whistle-level transitions.
 #
-# labels: integer node id per permutable unit (one per multi-loop chain in
-#   script 07; one per whistle in script 08), in a fixed, arbitrary order -
-#   `sample(labels)` defines one null permutation.
+# labels: integer node id per permutable unit (one per whistle in script 08;
+#   one per stand-alone whistle or multi-loop chain in script 10), in a
+#   fixed, arbitrary order - `sample(labels)` defines one null permutation.
 # from_idx / to_idx: equal-length integer indices into `labels` - transition
 #   instance k pairs labels[from_idx[k]] -> labels[to_idx[k]]. Fixed across
 #   iterations; only `labels` is permuted.
@@ -371,12 +284,12 @@ extract_multiloop_chain_sequences <- function(whistle_chains) {
 # total in + out transition count for that iteration for free - the same
 # node-strength null strength_null_distribution() (R/statistical_utils.R)
 # builds from saved whistle-level null count matrices, but computed here
-# from the label permutation directly since this caller (scripts/21) has no
+# from the label permutation directly since script 10 has no
 # saved per-iteration count matrices to build a dense n_nodes x n_nodes
 # matrix from. Self-transitions are included (row_sum/col_sum both count a
 # from==to pair), matching strength_null_distribution(exclude_self = FALSE)
 # - the "including self-transitions" strength already used for the
-# whistle-level z-score plot (scripts/02).
+# whistle-level z-score plot (scripts/04_node_network_measures.R).
 compute_permutation_transition_significance <- function(
     labels, from_idx, to_idx, n_nodes, transition_counts_matrix,
     iterations, progress_every = 5000L
@@ -457,14 +370,15 @@ compute_permutation_transition_significance <- function(
 }
 
 # Thin wrapper of compute_permutation_transition_significance() for the
-# multi-loop *type* network (scripts/07): a chain-level transition is
-# always between a chain and the next chain in start_time order, so
+# multi-loop composition network (scripts/10_multiloop_composition_network.R):
+# a transition is always between a unit (a stand-alone whistle or a whole
+# multi-loop chain) and the next unit in start_time order, so
 # from_idx/to_idx reduce to `which(within_window)` and `from_idx + 1`.
 #
-# chain_node_ids: integer node id per multi-loop chain (chain_length >= 2),
-#   in the same recording/start_time order used to build `within_window`.
+# chain_node_ids: integer node id per unit, in the same recording/start_time
+#   order used to build `within_window`.
 # within_window: logical, length(chain_node_ids) - 1; TRUE at position i
-#   when chain i's pattern is recorded as transitioning to chain i + 1's.
+#   when unit i is recorded as transitioning to unit i + 1.
 compute_multiloop_type_significance <- function(
     chain_node_ids, within_window, n_nodes, transition_counts_matrix,
     iterations, progress_every = 5000L

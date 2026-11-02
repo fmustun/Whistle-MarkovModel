@@ -1,4 +1,9 @@
 #!/usr/bin/env Rscript
+#
+# Manuscript Fig. S4 and Methods 4.9: node strength (self-transitions
+# included) against emission frequency, tested against the shuffle null
+# that preserves each node's occurrence count; BH-corrected per-node
+# empirical p-values define the hubs.
 
 suppressPackageStartupMessages({
   library(igraph)
@@ -37,24 +42,14 @@ MarkovModel <- saved$MarkovModel
 whistles_list <- saved$whistles_list
 list_names <- saved$config$list_names
 
-# Node strength here is the raw total transition count in + out of a node,
-# not the row-normalized probability strength plotted in
-# scripts/02_node_network_measures.R - see the comment on
+# Node strength here is the raw total transition count in + out of a node
+# (self-transitions included, as in Methods 4.9), not the row-normalized
+# probability strength of the plotted network - see the comment on
 # strength_null_distribution() in R/statistical_utils.R for why raw counts
 # are the quantity that can be nulled meaningfully.
-#
-# Computed twice - self-transitions excluded (the main analysis: a node's
-# connectivity to *other* whistle types) and included (diagnostic: total
-# participation regardless of target) - so the two can be plotted side by
-# side to see how much of any below/above-null deviation is driven by
-# self-repetition rather than connections to other whistle types.
 message(
   "Computing frequency-based null for node strength (",
   MarkovModel$iterations_number, " shuffle iterations)..."
-)
-strength_null <- strength_null_distribution(
-  MarkovModel$transition_counts_matrix,
-  MarkovModel$random_whistle_occurrences_matrices
 )
 strength_null_incl_self <- strength_null_distribution(
   MarkovModel$transition_counts_matrix,
@@ -92,7 +87,6 @@ whistle_chr_map <- tapply(
 # correction already used for the edge-level significant network in
 # scripts/01_run_markov_model.R - so "significant" here means the same
 # thing it means everywhere else in this pipeline.
-bh_q_value <- stats::p.adjust(strength_null$p_value, method = "BH")
 bh_q_value_incl_self <- stats::p.adjust(strength_null_incl_self$p_value, method = "BH")
 
 df <- data.frame(
@@ -101,12 +95,6 @@ df <- data.frame(
   category = V(node_graph)$category,
   color = V(node_graph)$color,
   occurrences = as.numeric(MarkovModel$whistle_occurrence[node_ids]),
-  strength = strength_null$observed_strength,
-  null_mean_strength = strength_null$null_mean,
-  null_sd_strength = strength_null$null_sd,
-  z_score = strength_null$z_score,
-  p_value = strength_null$p_value,
-  bh_q_value = bh_q_value,
   strength_incl_self = strength_null_incl_self$observed_strength,
   null_mean_strength_incl_self = strength_null_incl_self$null_mean,
   null_sd_strength_incl_self = strength_null_incl_self$null_sd,
@@ -119,11 +107,9 @@ csv_path <- file.path(REPO_ROOT, OUTPUT_DIR, "node_strength_frequency_null.csv")
 write.csv(df, csv_path, row.names = FALSE, quote = FALSE)
 message("Saved ", csv_path)
 
-# Both figures are drawn twice - self-transitions excluded (the main
-# analysis) and included (diagnostic comparison) - via these two small
-# helpers rather than duplicating the ggplot calls outright. They build and
-# return a ggplot object rather than saving directly, so the incl_self pair
-# can be combined into a single two-panel figure below.
+# The two panels of Fig. S4 are built by these two helpers, which return a
+# ggplot object rather than saving directly so they can be combined into a
+# single two-panel figure below.
 #
 # The gray band is the same BH-corrected significance boundary as the
 # z-score panel's dashed line (z_threshold, computed below by
@@ -270,44 +256,13 @@ warn_if_z_threshold_discordant <- function(z_score, bh_q, z_threshold, label,
   invisible(NULL)
 }
 
-z_threshold <- z_score_bh_threshold(df$z_score, df$bh_q_value)
 z_threshold_incl_self <- z_score_bh_threshold(df$z_score_incl_self, df$bh_q_value_incl_self)
-warn_if_z_threshold_discordant(df$z_score, df$bh_q_value, z_threshold, "excl_self")
 warn_if_z_threshold_discordant(
   df$z_score_incl_self, df$bh_q_value_incl_self, z_threshold_incl_self, "incl_self"
 )
 
-save_ggplot(
-  build_strength_vs_frequency_null_plot(
-    df, "strength", "null_mean_strength", "null_sd_strength", z_threshold,
-    y_label = "strength (total non-self transitions in + out)",
-    caption = sprintf(
-      "dashed line = null mean strength given frequency alone (shuffle null); shaded band = not BH-significant (empirical p, BH-corrected < %.2f, i.e. z < %.2f)",
-      GRAPH_ALPHA, z_threshold
-    )
-  ),
-  "strength_vs_frequency_null",
-  REPO_ROOT,
-  subdir = "network_measures"
-)
-
-save_ggplot(
-  build_z_score_vs_frequency_plot(
-    df, "z_score", z_threshold, "bh_q_value",
-    caption = sprintf(
-      "dashed line at z = %.2f: BH-corrected empirical p < %.2f (self-transitions excluded, %s nodes, %s shuffle iterations)",
-      z_threshold, GRAPH_ALPHA, nrow(df), format(MarkovModel$iterations_number, big.mark = ",")
-    )
-  ),
-  "strength_z_score_vs_frequency",
-  REPO_ROOT,
-  subdir = "network_measures"
-)
-
-# strength_vs_frequency_null_incl_self and strength_z_score_vs_frequency_incl_self
-# (the self-transitions-included diagnostics) are combined into one two-panel
-# figure rather than saved separately: no per-panel caption or legend (the
-# dashed BH-threshold line in the z-score panel is labeled directly instead).
+# One two-panel figure (Fig. S4): no per-panel caption or legend (the dashed
+# BH-threshold line in the z-score panel is labeled directly instead).
 strength_panel_incl_self <- build_strength_vs_frequency_null_plot(
   df, "strength_incl_self", "null_mean_strength_incl_self", "null_sd_strength_incl_self",
   z_threshold_incl_self,

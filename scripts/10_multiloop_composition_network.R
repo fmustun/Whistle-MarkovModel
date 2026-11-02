@@ -1,20 +1,23 @@
 #!/usr/bin/env Rscript
 
+# Manuscript Fig. S6 (Methods 4.11): stand-alone whistle / multi-loop
+# composition network (a) and its betweenness vs. standardized strength (b).
+#
 # Combined whistle/multi-loop-cluster transition network at the finest
-# granularity kept for this analysis: the five target clusters scripts/20
+# granularity kept for this analysis: the five target clusters scripts/09
 # sub-clustered (2 = NSW_9, 3 = SW_Neo, 5 = SW_Nikita, 6 = SW_Luna,
 # 7 = SW_Nana) are each split into their own HIERARCHICAL sub-clusters
 # (epsilon = 0.3/cross_category_cost = 1, MDL-selected k) instead of staying
 # as one node apiece; the other four k = 9 clusters (1 = NSW_3, 4 = SW_Dana,
 # 8 = SW_Shy, 9 = SW_Yosefa) - not sub-clustered - keep their single node.
-# Reads scripts/20's own chain-level assignment CSV
+# Reads scripts/09's own chain-level assignment CSV
 # (multiloop_subcluster_mdl_chain_assignments.csv) rather than re-running
 # the sub-clustering, since that file already has exactly the
 # sub_cluster_hierarchical column needed here.
 #
 # Node universe: 85 standalone whistle sub-categories (script 01's
 # granularity, unchanged) + 4 un-split top-level clusters + 25 hierarchical
-# sub-clusters (7 + 3 + 3 + 10 + 2, from scripts/20) = 114 nodes total.
+# sub-clusters (7 + 3 + 3 + 10 + 2, from scripts/09) = 114 nodes total.
 
 suppressPackageStartupMessages({
   library(igraph)
@@ -51,7 +54,7 @@ register_fcircle_shape()
 TOP_K <- 9L
 subcluster_csv <- file.path(multiloop_dir, "multiloop_subcluster_mdl_chain_assignments.csv")
 if (!file.exists(subcluster_csv)) {
-  stop("Run scripts/20_multiloop_subcluster_mdl.R first. Missing: ", subcluster_csv, call. = FALSE)
+  stop("Run scripts/09_multiloop_composition_clustering.R first. Missing: ", subcluster_csv, call. = FALSE)
 }
 
 message("Loading whistles from ", DATA_PATH)
@@ -65,7 +68,7 @@ whistle_chains <- compute_multiloop_chains(
   whistles_list, threshold = MULTILOOP_IWI_THRESHOLD, list_names = LIST_NAMES
 )
 
-# -- top-level k = 9 clustering (same tree/cost as scripts/20) --------------
+# -- top-level k = 9 clustering (same tree/cost as scripts/09) --------------
 
 type_lookup <- unique(whistle_chains[, c("whistle_type_chr", "category")])
 if (anyDuplicated(type_lookup$whistle_type_chr)) {
@@ -85,7 +88,7 @@ top_clustering <- cluster_multiloop_chains(
 )
 chain_level <- top_clustering$chain_level
 
-# -- graft scripts/20's hierarchical sub-clusters onto the target clusters --
+# -- graft scripts/09's hierarchical sub-clusters onto the target clusters --
 
 subclusters <- read.csv(subcluster_csv, stringsAsFactors = FALSE)
 sub_lookup <- setNames(subclusters$sub_cluster_hierarchical, subclusters$chain_id)
@@ -357,7 +360,7 @@ with_pdf_plot(
       paste0(
         "each node is either one whistle sub-category produced on its own (as in script 01), one un-split k = 9 multi-loop cluster (NSW_3/SW_Dana/SW_Shy/SW_Yosefa), ",
         "or one hierarchical (epsilon = ", MULTILOOP_CLUSTER_EPSILON, ", cross-category = ",
-        MULTILOOP_CLUSTER_CROSS_CATEGORY_COST, ") sub-cluster of the other five k = 9 clusters (Luna/Neo/Nikita/NSW_9/Nana - MDL-selected sub-k, see scripts/20)"
+        MULTILOOP_CLUSTER_CROSS_CATEGORY_COST, ") sub-cluster of the other five k = 9 clusters (Luna/Neo/Nikita/NSW_9/Nana - MDL-selected sub-k, see scripts/09)"
       ),
       "edge width = transition probability between nodes; node color = dominant main category (exact for a whistle node, plurality for a cluster/sub-cluster node - see multiloop_cluster_network_subclusters_nodes.csv for dominant_category_pct)",
       "multi-loop cluster/sub-cluster nodes are drawn larger with a thicker border and a bold black node number; standalone whistle sub-categories are smaller/thin-bordered with a navy node number",
@@ -377,23 +380,11 @@ with_pdf_plot(
   )
 )
 
-message("Plotting betweenness vs. strength...")
-plot_betweenness_strength_scatter(
-  gra_cluster_plot,
-  plot_path("multiloop_cluster_betweenness_vs_strength_subclusters", REPO_ROOT, subdir = "multiloops"),
-  vertex_label_color = V(gra_cluster_plot)$label_color,
-  vertex_label_font = V(gra_cluster_plot)$label_font,
-  vertex_cex = ifelse(is_cluster_node, 2.6, 1.6),
-  vertex_lwd = ifelse(is_cluster_node, 2.5, 1),
-  extra_caption = "larger, thicker-bordered points = multi-loop cluster/sub-cluster units; smaller, thin-bordered points = standalone whistle sub-categories"
-)
-
-# Same panel again, with strength swapped for standardized strength
-# (z-score against the same shuffle-null model already run above for edge
-# significance - significance$strength_z_score, self-transitions included,
+# Fig. S6b: betweenness vs. standardized strength (z-score against the same
+# shuffle-null model already run above for edge significance - significance$strength_z_score, self-transitions included,
 # see the comment on compute_permutation_transition_significance() in
 # R/multiloop_utils.R) instead of plot_betweenness_strength_scatter()'s own
-# strength(gra, mode = "all"). Mirrors scripts/02's markov_betweenness_vs_
+# strength(gra, mode = "all"). Mirrors scripts/04's markov_betweenness_vs_
 # strength_zscore.png for the whistle-level network, computed here for the
 # combined whistle/multi-loop-cluster network instead.
 message("Plotting betweenness vs. standardized strength (z-score)...")
@@ -410,11 +401,11 @@ plot_betweenness_strength_scatter(
   strength_label = "standardized strength (z-score vs. shuffle null)",
   # Points at the observed betweenness/z-score min or max would otherwise
   # sit exactly on the panel border (xaxs/yaxs = "i", the default axis_
-  # padding = 0) and read as half-clipped - matches scripts/02's own
+  # padding = 0) and read as half-clipped - matches scripts/04's own
   # markov_betweenness_vs_strength_zscore.png, which uses the same padding
   # for the same reason.
   axis_padding = 0.05,
-  # No caption, bigger text - matches scripts/02's own
+  # No caption, bigger text - matches scripts/04's own
   # markov_betweenness_vs_strength_zscore.png styling.
   show_caption = FALSE,
   text_cex = 1.5

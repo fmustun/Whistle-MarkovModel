@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 
-# A 2x2 panel of script 01's significant Markov transition network (same
-# nodes/layout as markov_significant_network.pdf, unchanged - same
-# background scripts 06/12/13 already reuse), drawn four times. Each panel
+# Manuscript Fig. S5: a 2x2 panel of script 01's significant Markov
+# transition network (same nodes/layout as markov_significant_network.pdf,
+# unchanged), drawn four times. Each panel
 # highlights several example multi-loop chains (IWI < MULTILOOP_IWI_
 # THRESHOLD) at once, each in its own color, as a path through its
 # whistles' node positions:
@@ -19,8 +19,7 @@
 #    same notion as compute_self_repeat_counts()) has no edge to reuse
 #    (gra1 has none - self-transitions are BH-significant-border-only
 #    there), so it stays a small open loop drawn next to that node instead,
-#    labeled "xN" for an N-whistle run, in the chain's own color - same
-#    convention as script 13.
+#    labeled "xN" for an N-whistle run, in the chain's own color.
 #
 # Within one panel, the example chains (3 or 4 of them, MIN/MAX_EXAMPLES_
 # PER_PANEL below) are chosen, in order of preference, to:
@@ -41,7 +40,7 @@
 # temporal order (1, 2, 3, ...), in the chain's own color, so the drawn
 # path's direction of travel is legible even where paths bunch up.
 # A chain with a member sub-category outside the significant network can't
-# be placed and is skipped entirely - same handling as scripts 06/12/13.
+# be placed and is skipped entirely.
 
 suppressPackageStartupMessages({
   library(igraph)
@@ -72,8 +71,7 @@ dir.create(multiloop_dir, recursive = TRUE, showWarnings = FALSE)
 N_PANELS <- 4L
 # "3 or 4" non-overlapping examples per panel, per request - not a derived
 # quantity, just how many distinct colors stay legible against one
-# background (matches hcl.colors' "Dark 3" qualitative palette, also used
-# for this purpose in script 13's all-chains-at-once overlay). The
+# background (hcl.colors' "Dark 3" qualitative palette). The
 # selection below always tries for MAX first and only settles for fewer
 # (down to MIN) if the non-crossing preference or the candidate pool
 # forces it.
@@ -102,8 +100,7 @@ gra1 <- saved$gra1
 register_fcircle_shape()
 
 # Same function/seed/graph as script 01 uses for markov_significant_network.pdf
-# (and scripts 06/12/13 reuse the same way) - guarantees identical node
-# positions across all four panels and every other multi-loop overlay plot.
+# - guarantees identical node positions across all four panels and Fig. 4.
 coordinates <- compute_markov_layout(gra1, PLOT_SEED)
 valid_node_names <- V(gra1)$name
 
@@ -145,7 +142,7 @@ message(
 # Run-length-encodes one chain's ordered whistle_type sequence into steps
 # (one row per maximal run of the same sub-category), so a stutter of N
 # consecutive same-type whistles becomes one "self-repeat of length N" step
-# rather than N-1 invisible zero-length segments - same as script 13.
+# rather than N-1 invisible zero-length segments.
 build_chain_steps <- function(cid) {
   sub <- loop_whistles[loop_whistles$chain_id == cid, ]
   run <- rle(as.character(sub$whistle_type))
@@ -334,11 +331,10 @@ write.csv(path_table, path_csv, row.names = FALSE)
 message("Saved ", path_csv)
 
 # Self-repeat loops are drawn just outside the node, in the direction
-# pointing away from the plot origin. No per-chain fan-out offset is needed
-# (unlike script 13's all-chains-at-once overlay): two chains in the same
-# panel can never share a self-repeat at the same node, since that would
-# be a shared "type|type" edge key and the selection above already
-# forbids it.
+# pointing away from the plot origin. No per-chain fan-out offset is needed:
+# two chains in the same panel can never share a self-repeat at the same
+# node, since that would be a shared "type|type" edge key and the selection
+# above already forbids it.
 node_outward_angle <- function(pos) {
   if (all(pos == 0)) 0 else atan2(pos["y"], pos["x"])
 }

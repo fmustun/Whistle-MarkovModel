@@ -1,21 +1,20 @@
 #!/usr/bin/env Rscript
 
-# Response-letter analysis: replaces the whistle-level Spearman correlation
-# between P(position | in loop) and network measures (scripts/
-# 10_multiloop_position_subcategory.R's positions_vs_network_measure plots)
-# with a group-comparison permutation test. Motivation (from the reviewer):
-# a correlation computed across ALL nodes can be flat while a small set of
-# hub nodes is specifically enriched at the terminal position - the
-# reviewer's question is about those specific hub nodes, not about a
-# population-wide linear trend. The per-node P(first)/P(last) computation
-# itself (script 10's n_first / n_multiloop, n_last / n_multiloop) is
-# unchanged; what changes is how it's tested against network role.
+# Manuscript section 2.5 / Methods 4.12 (reviewer comment 5): does a
+# sub-category's network role (hub, bridge, turn-taking) relate to its
+# position (introductory / central / terminal) within multi-loop chains?
+# Tested as a group comparison against a within-chain permutation null
+# rather than as a correlation across all nodes: a correlation computed
+# across ALL nodes can be flat while a small set of hub nodes is
+# specifically enriched at the terminal position - the reviewer's question
+# is about those specific hub nodes, not about a population-wide linear
+# trend. Per node, P(first) = n_first / n_multiloop and
+# P(last) = n_last / n_multiloop.
 #
 # NODE SETS
 #   Set A: every sub-category with >= 10 occurrences inside multi-loop
 #     chains (chain_length >= 2) that also has a node in the BH-significant
-#     whistle-level network (scripts/01/02) - i.e. exactly script 10's
-#     min_n_for_plot filter on n_multiloop, reproducing its n = 51.
+#     whistle-level network (scripts/01, 04) - n = 51.
 #   Set B: Set A restricted to nodes above the 90th percentile of EITHER
 #     betweenness or standardized strength in Figure 5c
 #     (outputs/plots/Figure_network_analysis.png/svg, panel c =
@@ -27,8 +26,7 @@
 #     each at quantile(., 0.9) - reproduced here from outputs/node_measures.csv
 #     rather than re-deriving betweenness/strength from scratch, since that
 #     CSV is the exact data plot_betweenness_strength_scatter() was called
-#     on (scripts/02_node_network_measures.R, same script run: both files'
-#     mtimes are seconds apart).
+#     on (scripts/04_node_network_measures.R).
 #
 #   The instructions accompanying this analysis included node numbers "read
 #   off the figure" as a manual cross-check:
@@ -54,17 +52,14 @@
 #   Set B, "rest" means "in Set B (i.e. a hub by SOME measure) but not high
 #   on this particular role", not "not a hub at all". Null: permute the
 #   assignment of sub-category labels to positions WITHIN each multi-loop
-#   chain, independently per chain, 10,000 times - identical in mechanism to
-#   the within-chain shuffle null already used in script 10 (see its
-#   "permutation null: shuffle whistle_type_chr within chain_id" section),
-#   which preserves chain length, each chain's own sub-category multiset,
-#   and hence every node's total in-chain occurrence count (n_multiloop)
-#   exactly; only which position each occurrence lands in is randomized.
+#   chain, independently per chain, 10,000 times - which preserves chain
+#   length, each chain's own sub-category multiset, and hence every node's
+#   total in-chain occurrence count (n_multiloop) exactly; only which
+#   position each occurrence lands in is randomized.
 #   Statistic: delta = mean P(last) of the "high" group - mean P(last) of
 #   "rest"; two-sided empirical p = (1 + #{|delta_null| >= |delta_obs|}) /
-#   (iterations + 1) (the same "+1" smoothing convention script 10 already
-#   uses for its permutation p-values). Repeated identically for P(first)
-#   [introductory] and P(middle) [central] - each of the three positions gets
+#   (iterations + 1). Repeated identically for P(first) [introductory] and
+#   P(middle) [central] - each of the three positions gets
 #   its own 6-test (role x node set) family, BH-corrected within itself.
 #
 # OUTPUT (outputs/multiloop_analysis/position_analysis/)
@@ -110,12 +105,11 @@ position_dir <- file.path(REPO_ROOT, OUTPUT_DIR, "multiloop_analysis", "position
 dir.create(position_dir, recursive = TRUE, showWarnings = FALSE)
 
 ITERATIONS <- 10000L
-MIN_N_MULTILOOP <- 10L # unchanged from script 10's min_n_for_plot, applied to n_multiloop
+MIN_N_MULTILOOP <- 10L # minimum in-chain occurrences (n_multiloop) for Set A
 QUOTE_NODES <- c(21L, 1L, 36L, 26L, 46L)
 
 # ============================================================================
-# 1. Load whistles / multi-loop chains; per-occurrence position (UNCHANGED
-#    from scripts/10_multiloop_position_subcategory.R)
+# 1. Load whistles / multi-loop chains; per-occurrence position
 # ============================================================================
 
 message("Loading whistles from ", DATA_PATH)
@@ -136,7 +130,7 @@ ml$position_category <- ifelse(
 
 node_measures_csv <- file.path(REPO_ROOT, OUTPUT_DIR, "node_measures.csv")
 if (!file.exists(node_measures_csv)) {
-  stop("Run scripts/02_node_network_measures.R first. Missing: ", node_measures_csv, call. = FALSE)
+  stop("Run scripts/04_node_network_measures.R first. Missing: ", node_measures_csv, call. = FALSE)
 }
 node_measures <- read.csv(node_measures_csv, stringsAsFactors = FALSE)
 node_measures$node_id <- as.integer(node_measures$nodes)
@@ -154,8 +148,8 @@ category_all <- node_lookup$category[match(all_sub_levels, node_lookup$whistle_t
 
 # ============================================================================
 # 2. Per-node baseline descriptives from the FULL chain_length >= 2 data:
-#    n_multiloop (occurrence count - unchanged from script 10),
-#    n_chains (DISTINCT chain count - new), mean_chain_length (new).
+#    n_multiloop (in-chain occurrence count), n_chains (DISTINCT chain
+#    count), mean_chain_length.
 # ============================================================================
 
 sub_code_full <- match(ml$whistle_type_chr, all_sub_levels)
@@ -341,8 +335,7 @@ message("")
 # ============================================================================
 # 5. Permutation machinery
 #    Shuffles WHICH sub-category label occupies each chain slot, uniformly
-#    at random within each chain (order(chain_code, runif(n)) is the same
-#    idiom script 10 already uses for its within-chain shuffle null) - this
+#    at random within each chain (order(chain_code, runif(n))) - this
 #    leaves chain length, each chain's own label multiset, and hence every
 #    node's n_multiloop exactly fixed; only per-node n_first/n_last (and so
 #    P(first)/P(last)) vary across draws.
@@ -362,10 +355,12 @@ compute_observed_positions <- function(ml_subset, sub_levels) {
     n_first = n_first, n_last = n_last, n_middle = n_middle,
     P_first = n_first / n_multiloop, P_last = n_last / n_multiloop,
     P_middle = n_middle / n_multiloop,
-    # Analytic chance level for P(first) = P(last) under this same null (see
-    # script 10's derivation: E[1/chain_length], averaged over each node's
-    # own in-chain occurrences) - used below as the per-node test's null
-    # center, and as a sanity check against the empirical permutation mean.
+    # Analytic chance level for P(first) = P(last) under this same null
+    # (E[1/chain_length], averaged over each node's own in-chain
+    # occurrences: a uniformly shuffled chain of length L puts a given
+    # occurrence first with probability 1/L) - used below as the per-node
+    # test's null center, and as a sanity check against the empirical
+    # permutation mean.
     p_chance = as.vector(tapply(
       1 / ml_subset$chain_length, factor(sub_code, levels = seq_len(n_sub)), mean
     ))
@@ -663,8 +658,8 @@ message(paste(diag4_lines, collapse = "\n"))
 #    each of P(first)/P(middle)/P(last): two-sided, comparing how far the
 #    OBSERVED rate sits from that node's own analytic chance level
 #    (p_chance = E[1/chain_length] for first/last, 1 - 2*p_chance for
-#    middle, the same null already derived in script 10) against how far the
-#    null draws sit from that same chance level.
+#    middle) against how far the null draws sit from that same chance
+#    level.
 # ============================================================================
 
 obs <- primary_run$observed

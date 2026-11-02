@@ -1,9 +1,15 @@
 #!/usr/bin/env Rscript
+#
+# Manuscript section 2.5 / Methods 4.10: groups temporally adjacent whistles
+# into multi-loop chains (inter-whistle interval < MULTILOOP_IWI_THRESHOLD,
+# 250 ms) and summarizes them - whistles inside vs. outside multi-loops,
+# chain lengths, recurring sub-category patterns, and the share of Markov
+# transition instances that fall inside a chain. Writes
+# outputs/multiloop_analysis/multiloop_summary.txt plus per-whistle,
+# per-chain, per-pattern and per-transition CSVs.
 
 suppressPackageStartupMessages({
   library(igraph)
-  library(ggplot2)
-  library(gridExtra)
 })
 
 args <- commandArgs(trailingOnly = FALSE)
@@ -22,9 +28,7 @@ source(file.path(REPO_ROOT, "R", "config.R"))
 source(file.path(REPO_ROOT, "R", "load_whistles.R"))
 source(file.path(REPO_ROOT, "R", "graph_utils.R"))
 source(file.path(REPO_ROOT, "R", "multiloop_utils.R"))
-source(file.path(REPO_ROOT, "R", "plot_io.R"))
 
-ensure_plots_dir(REPO_ROOT, "multiloops")
 multiloop_dir <- file.path(REPO_ROOT, OUTPUT_DIR, "multiloop_analysis")
 dir.create(multiloop_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -50,7 +54,7 @@ n_multiloop_whistles <- n_whistles - n_singleton_whistles
 
 # A chain of length 1 is a single whistle with no neighbor within the IWI
 # threshold - not a "multi-loop" by definition. It's reported above for
-# context, but excluded from every multi-loop measure/plot below so it
+# context, but excluded from every multi-loop measure below so it
 # doesn't dilute stats like mean chain length.
 multiloop_chains <- chains[chains$chain_length >= 2, ]
 n_multiloop_chains <- nrow(multiloop_chains)
@@ -89,7 +93,6 @@ chain_category_counts$composition <- ifelse(
 )
 composition_counts <- as.data.frame(table(chain_category_counts$composition))
 names(composition_counts) <- c("composition", "n_chains")
-composition_counts$pct <- 100 * composition_counts$n_chains / sum(composition_counts$n_chains)
 n_same_category_chains <- composition_counts$n_chains[
   composition_counts$composition == "same category"
 ]
@@ -148,21 +151,6 @@ message(
   " exact-sequence sub-category patterns recur across more than one chain; ",
   n_repeated_unordered, " / ", nrow(pattern_summary_unordered),
   " same-composition patterns do"
-)
-
-occurrence_distribution <- rbind(
-  transform(
-    as.data.frame(table(pattern_summary_ordered$n_occurrences)),
-    match_type = "exact sequence"
-  ),
-  transform(
-    as.data.frame(table(pattern_summary_unordered$n_occurrences)),
-    match_type = "same composition (any order)"
-  )
-)
-names(occurrence_distribution)[1:2] <- c("n_occurrences", "n_patterns")
-occurrence_distribution$n_occurrences <- as.integer(
-  as.character(occurrence_distribution$n_occurrences)
 )
 
 pattern_csv <- file.path(multiloop_dir, "multiloop_pattern_occurrences.csv")
@@ -302,118 +290,3 @@ summary_lines <- c(
 )
 writeLines(summary_lines, file.path(multiloop_dir, "multiloop_summary.txt"))
 message("Saved ", file.path(multiloop_dir, "multiloop_summary.txt"))
-
-# -- combined figure: four panels ------------------------------------------
-
-panel_length_by_category <- ggplot(
-  multiloop_chains, aes(x = factor(chain_length), fill = leading_category)
-) +
-  geom_bar(color = "black", width = 0.75) +
-  scale_fill_manual(
-    breaks = LIST_NAMES, values = LIST_COLORS[seq_along(LIST_NAMES)]
-  ) +
-  theme_minimal() +
-  labs(
-    title = paste0(
-      "Multi-loop chain length distribution by leading category (IWI < ",
-      MULTILOOP_IWI_THRESHOLD * 1000, "ms; singletons excluded)"
-    ),
-    x = "chain length (whistles)",
-    y = "number of chains",
-    fill = "leading category"
-  )
-
-panel_category_composition <- ggplot(
-  composition_counts, aes(x = "", y = n_chains, fill = composition)
-) +
-  geom_col(color = "black", width = 1) +
-  coord_polar(theta = "y") +
-  geom_text(
-    aes(label = paste0(n_chains, "\n(", round(pct, 1), "%)")),
-    position = position_stack(vjust = 0.5)
-  ) +
-  scale_fill_manual(
-    breaks = c("same category", "different category"),
-    values = c("#61D04F", "#A9A9A9")
-  ) +
-  theme_void() +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  labs(
-    title = "Multi-loop chains: same vs. different main category",
-    fill = "composition"
-  )
-
-overlap_rates <- data.frame(
-  group = factor(
-    c("all transitions", "self-transitions", "different-type transitions"),
-    levels = c("all transitions", "self-transitions", "different-type transitions")
-  ),
-  pct_within_chain = c(
-    pct_within_chain,
-    100 * n_self_within_chain / n_self,
-    100 * n_diff_within_chain / n_diff
-  ),
-  n = c(n_transitions, n_self, n_diff),
-  n_within = c(n_transitions_within_chain, n_self_within_chain, n_diff_within_chain)
-)
-
-panel_markov_overlap <- ggplot(
-  overlap_rates, aes(x = group, y = pct_within_chain)
-) +
-  geom_col(fill = "#2297E6", color = "black", width = 0.6) +
-  geom_text(
-    aes(label = paste0(round(pct_within_chain, 1), "%\n(", n_within, "/", n, ")")),
-    vjust = -0.15, size = 3.2
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 20, hjust = 1)) +
-  labs(
-    title = "Markov transition pairs within a multi-loop chain",
-    x = NULL,
-    y = "% of transition instances"
-  ) +
-  ylim(0, 100)
-
-panel_pattern_occurrence <- ggplot(
-  occurrence_distribution,
-  aes(x = factor(n_occurrences), y = n_patterns, fill = match_type)
-) +
-  geom_col(position = position_dodge(width = 0.7), color = "black", width = 0.65) +
-  geom_text(
-    aes(label = n_patterns),
-    position = position_dodge(width = 0.7), vjust = -0.3, size = 3
-  ) +
-  scale_fill_manual(
-    breaks = c("exact sequence", "same composition (any order)"),
-    values = c("#2297E6", "#F5C710")
-  ) +
-  theme_minimal() +
-  labs(
-    title = paste0(
-      "Multi-loop sub-category pattern recurrence (",
-      n_multiloop_chains, " multi-loop chains, ",
-      nrow(pattern_summary_ordered), " distinct exact-sequence patterns)"
-    ),
-    x = "number of chains sharing the same sub-category pattern",
-    y = "number of distinct patterns",
-    fill = "pattern match"
-  )
-
-layout_matrix <- rbind(c(1, 1), c(2, 3), c(4, 4))
-combined_plot <- gridExtra::arrangeGrob(
-  panel_length_by_category, panel_category_composition, panel_markov_overlap,
-  panel_pattern_occurrence,
-  layout_matrix = layout_matrix
-)
-save_ggplot(
-  combined_plot, "multiloop_combined_summary", REPO_ROOT,
-  width = 11, height = 16, subdir = "multiloops"
-)
-
-# Remove the earlier per-panel plots this combined figure replaces.
-for (name in c("multiloop_length_distribution", "multiloop_length_distribution_by_category")) {
-  for (ext in c("pdf", "png")) {
-    stale_path <- plot_path(name, REPO_ROOT, ext = ext, subdir = "multiloops")
-    if (file.exists(stale_path)) file.remove(stale_path)
-  }
-}

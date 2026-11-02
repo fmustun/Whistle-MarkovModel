@@ -1,44 +1,23 @@
 #!/usr/bin/env Rscript
 
-# Regenerates panels b-e of outputs/plots/SFigure_null_model.png (the code
-# that produced that PNG isn't in this repo - only the rendered image was
-# committed). Panels a and f of that figure are out of scope here (interval
-# distribution fit and the full network plot, respectively); this script
-# only rebuilds the four example null-distribution histograms. Output goes
-# to outputs/plots/null_model_examples/: the combined 4-panel column (as in
-# the original figure), each panel as its own file, and a stats CSV.
+# Manuscript Fig. S3b-e: four example transition probabilities P(from -> to)
+# against their shuffle-null distributions (MarkovModel$
+# random_whistle_occurrences_matrices, R/markov_whistle.R), observed value as
+# a red dashed line, annotated with the BH-corrected q-value
+# (outputs/bh_analysis/bh_q_values.rds). Panels a (inter-whistle interval
+# fit) and f (shuffled network) are not produced by this repo. Output goes
+# to outputs/plots/null_model_examples/: the combined 4-panel column, each
+# panel as its own file, and a stats CSV.
 #
-# Each panel shows the shuffle-null distribution of one transition
-# probability P(from -> to) (MarkovModel$random_whistle_occurrences_matrices,
-# R/markov_whistle.R) against the observed probability (red dashed line),
-# and is annotated with the current BH-corrected q-value
-# (outputs/bh_analysis/bh_q_values.rds) rather than the uncorrected
-# direct-randomization p the original legend quoted - see
-# [[project-bh-correction-methodology]].
-#
-# Pair selection: b (8->2) is unchanged from the original figure and is
-# still BH-significant. c's original pair (16->26) was dropped: its raw
-# empirical p under the current 150,000-iteration run (~0.0023) doesn't
-# match the original legend's p=0.004, not because anything is wrong but
-# because the two numbers were estimated with very different Monte Carlo
-# precision (git history shows ITERATIONS was 1,000 until commit d82eaaf,
-# 2026-07-14, when it became 150,000 as part of the BH-correction work - the
-# original figure predates that, given its legend only quotes a raw
-# direct-randomization p with no BH/q-value language). Rather than carry
-# that explanation into the figure, c now uses 40->37: BH-significant
-# (q ~= 0.0005) with a similarly sparse null distribution (23.9x spike/rest
-# ratio, needing the same axis break as e below).
-#
-# d's original pair (50->21) is no longer usable - it has zero observed
-# occurrences in the current outputs/markov_model.rds (count = 0), so it's
-# trivially excluded from the BH hypothesis family (family_mask requires
-# observed_probability > 0) and can't be shown as a *tested* non-significant
-# example. It's replaced with 26->21: still non-significant (BH q ~= 0.09),
-# and keeps node 21 as the target, which is the single most common whistle
-# sub-category (1312/8566 occurrences) - its high emission frequency is
-# exactly why the shuffle null also lands high probability there by chance,
-# so even a fairly high observed probability into it isn't significant.
-# e (16->24) is unchanged.
+# Pair selection: b (8->2) and c (40->37) are BH-significant; d (26->21) and
+# e (16->24) are not. Earlier drafts used 16->26 for c and 50->21 for d:
+# 16->26's p was estimated with only 1,000 iterations at the time, and
+# 50->21 is never observed in the current data, so it is outside the BH
+# family (family_mask requires observed_probability > 0) and cannot serve as
+# a tested non-significant example. 26->21 keeps node 21 - the most common
+# sub-category (1312/8566 occurrences) - as the target: its emission
+# frequency is why the shuffle null also puts high probability there, so
+# even a fairly high observed probability into it is not significant.
 
 suppressPackageStartupMessages({
   library(ggplot2)
